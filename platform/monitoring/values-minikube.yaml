@@ -1,0 +1,76 @@
+grafana:
+  enabled: false
+
+defaultRules:
+  create: false
+
+prometheusOperator:
+  nodeSelector:
+    workload-tier: monitoring
+  admissionWebhooks:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+prometheus:
+  prometheusSpec:
+    replicas: 1
+    nodeSelector:
+      workload-tier: monitoring
+    retention: 24h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 700m
+        memory: 768Mi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: aspecta-csi-wffc
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 2Gi
+
+alertmanager:
+  alertmanagerSpec:
+    replicas: 1
+    nodeSelector:
+      workload-tier: monitoring
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 192Mi
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: aspecta-csi-wffc
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 512Mi
+
+kube-state-metrics:
+  nodeSelector:
+    workload-tier: monitoring
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 24Mi
+    limits:
+      cpu: 100m
+      memory: 96Mi
