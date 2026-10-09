@@ -6,7 +6,7 @@ backend:
   replicaCount: 1
   image:
     repository: aspecta-backend
-    tag: dev
+    tag: secret-v1
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -15,6 +15,8 @@ backend:
     limits:
       cpu: 250m
       memory: 256Mi
+  auth:
+    existingSecretName: aspecta-backend-auth
 
 frontend:
   replicaCount: 1
@@ -37,3 +39,6 @@ ingress:
 rbac:
   auditor:
     enabled: true
+
+networkPolicy:
+  enabled: true

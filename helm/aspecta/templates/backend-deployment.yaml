@@ -31,6 +31,12 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
+          env:
+            - name: INTERNAL_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.auth.existingSecretName | quote }}
+                  key: INTERNAL_API_TOKEN
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
