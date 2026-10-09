@@ -1,0 +1,26 @@
+
+# Dependencies and build artifacts
+**/node_modules/
+**/dist/
+*.log
+
+# Local configuration and secrets
+.local-secrets/
+**/.env
+**/.env.*
+!.env.example
+
+# Kubernetes local files
+kubeconfig
+*.key
+*.pem
+
+# Terraform state
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Editor and OS
+.vscode/
+.DS_Store
+Thumbs.db

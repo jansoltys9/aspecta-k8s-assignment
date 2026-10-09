@@ -1,0 +1,39 @@
+config:
+  appEnv: dev
+  appMessage: "Hello from Aspecta Kubernetes!"
+
+backend:
+  replicaCount: 1
+  image:
+    repository: aspecta-backend
+    tag: dev
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: aspecta-frontend
+    tag: dev
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+ingress:
+  enabled: true
+  className: traefik
+
+rbac:
+  auditor:
+    enabled: true

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aspecta-training-config
+  namespace: aspecta-app
+data:
+  APP_ENV: "training"
+  LOG_LEVEL: "info"
+  MAX_RETRIES: "3"
