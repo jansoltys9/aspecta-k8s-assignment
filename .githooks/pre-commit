@@ -1,0 +1,10 @@
+#!/bin/sh
+
+echo "Checking staged files for whitespace errors..."
+
+if ! git diff --cached --check; then
+  echo "ERROR: Commit blocked due to whitespace errors." >&2
+  exit 1
+fi
+
+echo "Whitespace check passed."

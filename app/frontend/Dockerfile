@@ -17,6 +17,7 @@ FROM nginxinc/nginx-unprivileged:stable-alpine AS runtime
 
 COPY --from=build /src/dist/ /usr/share/nginx/html/
 
+USER 101:101
 EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

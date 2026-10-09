@@ -77,7 +77,7 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-      
+
       - name: Build image for security scan
         uses: docker/build-push-action@v7
         with:
