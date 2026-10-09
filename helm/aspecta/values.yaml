@@ -16,7 +16,7 @@ backend:
       cpu: 250m
       memory: 256Mi
   auth:
-    existingSecretName: aspecta-backend-auth
+    existingSecretName: aspecta-backend-auth-gitops
 
 frontend:
   replicaCount: 1
