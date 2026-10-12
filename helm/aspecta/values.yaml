@@ -16,8 +16,8 @@ backend:
     maxReplicas: 2
     targetCPUUtilizationPercentage: 70
   image:
-    repository: aspecta-backend
-    tag: secret-v1
+    repository: ghcr.io/jansoltys9/aspecta-backend
+    tag: sha-50499f2b190583f887304c3cb06618ef59a66c25
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -37,8 +37,8 @@ frontend:
     maxReplicas: 2
     targetCPUUtilizationPercentage: 70
   image:
-    repository: aspecta-frontend
-    tag: dev
+    repository: ghcr.io/jansoltys9/aspecta-frontend
+    tag: sha-50499f2b190583f887304c3cb06618ef59a66c25
     pullPolicy: IfNotPresent
   resources:
     requests:
