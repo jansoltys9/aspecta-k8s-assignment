@@ -4,7 +4,7 @@ metadata:
   name: aspecta
   namespace: argocd
 spec:
-  project: default
+  project: aspecta-workloads
 
   source:
     repoURL: https://github.com/jansoltys9/aspecta-k8s-assignment.git

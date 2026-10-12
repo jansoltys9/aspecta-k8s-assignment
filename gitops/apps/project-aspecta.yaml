@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: aspecta-workloads
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+
+spec:
+  description: Restricted project for Aspecta application
+
+  sourceRepos:
+    - https://github.com/jansoltys9/aspecta-k8s-assignment.git
+
+  destinations:
+    - namespace: aspecta-app
+      server: https://kubernetes.default.svc
+
+  # The application must not manage cluster-wide resources.
+  clusterResourceWhitelist: []
+
+  # Application resources within the allowed namespace.
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
