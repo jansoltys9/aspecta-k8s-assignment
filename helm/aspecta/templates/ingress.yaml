@@ -3,6 +3,10 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ .Release.Name }}-ingress
+  {{- if .Values.ingress.ignoreArgoHealth }}
+  annotations:
+    argocd.argoproj.io/ignore-healthcheck: "true"
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.ingress.className | quote }}
   rules:

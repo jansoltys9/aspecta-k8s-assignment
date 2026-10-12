@@ -51,10 +51,15 @@ frontend:
 ingress:
   enabled: true
   className: traefik
+  ignoreArgoHealth: true
 
 rbac:
   auditor:
     enabled: true
 
 networkPolicy:
+  enabled: true
+
+# Disable when running the standalone reviewer demo without Prometheus Operator CRDs.
+observability:
   enabled: true
