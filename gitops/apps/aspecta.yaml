@@ -16,3 +16,16 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: aspecta-app
+
+    ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jsonPointers:
+          - /spec/replicas
+
+    syncPolicy:
+      automated:
+        prune: false
+        selfHeal: true
+      syncOptions:
+        - RespectIgnoreDifferences=true
