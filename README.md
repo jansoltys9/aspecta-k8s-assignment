@@ -64,6 +64,7 @@ minikube stop -p aspecta-review
 ## Full GitOps lab (advanced)
 
 For the full multi-node lab, use the same staged bootstrap:
+For a new full GitOps cluster, see the [Sealed Secrets setup](docs/FULL-LAB-SECRETS.md).
 
 ```bash
 bash scripts/aspecta-bootstrap.sh --mode full --phase infra
