@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: aspecta-netpol-same-ns-test
+  namespace: aspecta-app
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+
+  nodeSelector:
+    kubernetes.io/hostname: aspecta-m02
+
+  containers:
+    - name: network-test
+      image: busybox:1.36
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -eu
+
+          BACKEND="aspecta-backend.aspecta-app.svc.cluster.local"
+          FRONTEND="aspecta-frontend.aspecta-app.svc.cluster.local"
+
+          echo "=== DNS ==="
+          nslookup "$BACKEND"
+          nslookup "$FRONTEND"
+
+          echo "=== Backend access ==="
+          if wget -T 5 -qO- "http://$BACKEND:3000/healthz"; then
+            echo "FAIL: Backend unexpectedly reachable"
+            exit 1
+          else
+            echo "EXPECTED: Backend blocked"
+          fi
+
+          echo "=== Frontend access ==="
+          if wget -T 5 -qO- "http://$FRONTEND:8080/"; then
+            echo "FAIL: Frontend unexpectedly reachable"
+            exit 1
+          else
+            echo "EXPECTED: Frontend blocked"
+          fi
+
+          echo "Both negative tests completed"
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi

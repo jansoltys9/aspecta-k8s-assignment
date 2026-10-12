@@ -1,11 +1,31 @@
 const http = require("node:http");
 const os = require("node:os");
+const crypto = require("node:crypto");
 
 const PORT = Number(process.env.PORT || 3000);
 const MESSAGE = process.env.APP_MESSAGE || "Hello from Aspecta Kubernetes!";
 const ENVIRONMENT = process.env.APP_ENV || "local";
+const INTERNAL_API_TOKEN = process.env.INTERNAL_API_TOKEN;
+
+// Fail closed when the required secret is unavailable.
+if (!/^[0-9a-f]{64}$/.test(INTERNAL_API_TOKEN || "")) {
+  console.error("INTERNAL_API_TOKEN is missing or invalid");
+  process.exit(1);
+}
 
 let apiRequests = 0;
+
+function authorized(providedToken) {
+  if (typeof providedToken !== "string") {
+    return false;
+  }
+
+  const expected = Buffer.from(INTERNAL_API_TOKEN);
+  const actual = Buffer.from(providedToken);
+
+  return expected.length === actual.length &&
+    crypto.timingSafeEqual(expected, actual);
+}
 
 const server = http.createServer((req, res) => {
   const path = new URL(req.url, "http://localhost").pathname;
@@ -20,10 +40,32 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify({ status: "ok" }));
   }
 
+  if (path === "/internal/status") {
+    if (!authorized(req.headers["x-internal-token"])) {
+      res.writeHead(401, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store"
+      });
+
+      return res.end(JSON.stringify({ error: "Unauthorized" }));
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store"
+    });
+
+    return res.end(JSON.stringify({
+      status: "ok",
+      service: "aspecta-backend"
+    }));
+  }
+
   if (path === "/api/hello") {
     apiRequests++;
 
     res.writeHead(200, { "Content-Type": "application/json" });
+
     return res.end(JSON.stringify({
       message: MESSAGE,
       environment: ENVIRONMENT,

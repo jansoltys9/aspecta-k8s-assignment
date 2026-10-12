@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: aspecta-netpol-deny-test
+  namespace: default
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+
+  nodeSelector:
+    kubernetes.io/hostname: aspecta
+
+  containers:
+    - name: network-test
+      image: busybox:1.36
+
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -eu
+
+          HOST="aspecta-backend.aspecta-app.svc.cluster.local"
+
+          echo "=== TEST 1: Kubernetes DNS ==="
+          nslookup "$HOST"
+
+          echo "=== TEST 2: Direct backend access ==="
+
+          if wget -T 5 -O /tmp/response \
+            "http://$HOST:3000/healthz"; then
+
+            echo "FAIL: Unauthorized Pod reached backend"
+            cat /tmp/response
+            exit 1
+
+          else
+            echo "EXPECTED: Direct HTTP request failed"
+          fi
+
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi

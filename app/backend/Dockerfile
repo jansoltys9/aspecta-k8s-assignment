@@ -1,4 +1,5 @@
-FROM node:22-alpine
+# Minimal Node.js runtime without npm, apk or a shell.
+FROM gcr.io/distroless/nodejs22-debian13:nonroot
 
 LABEL org.opencontainers.image.title="Aspecta Backend"
 
@@ -6,11 +7,11 @@ ENV NODE_ENV=production \
     PORT=3000
 
 WORKDIR /app
+COPY --chown=1000:1000 server.js ./server.js
 
-COPY --chown=node:node server.js ./server.js
-
+# Match Kubernetes securityContext.runAsUser/runAsGroup.
 USER 1000:1000
-
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# Distroless Node image already has ENTRYPOINT ["node"].
+CMD ["server.js"]

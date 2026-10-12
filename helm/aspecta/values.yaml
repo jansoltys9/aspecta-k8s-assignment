@@ -2,11 +2,22 @@ config:
   appEnv: dev
   appMessage: "Hello from Aspecta Kubernetes!"
 
+# NodeSelector limits the app to workers, soft preferences allow failover.
+scheduling:
+  nodeSelector:
+    aspecta.io/pool: workers
+  preferredNodeTier: apps
+
 backend:
   replicaCount: 1
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 70
   image:
-    repository: aspecta-backend
-    tag: dev
+    repository: ghcr.io/jansoltys9/aspecta-backend
+    tag: sha-e15e721956a10a8657296e3096b42245dffafa5d
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -15,12 +26,19 @@ backend:
     limits:
       cpu: 250m
       memory: 256Mi
+  auth:
+    existingSecretName: aspecta-backend-auth-gitops
 
 frontend:
   replicaCount: 1
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 70
   image:
-    repository: aspecta-frontend
-    tag: dev
+    repository: ghcr.io/jansoltys9/aspecta-frontend
+    tag: sha-e15e721956a10a8657296e3096b42245dffafa5d
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -33,7 +51,15 @@ frontend:
 ingress:
   enabled: true
   className: traefik
+  ignoreArgoHealth: true
 
 rbac:
   auditor:
     enabled: true
+
+networkPolicy:
+  enabled: true
+
+# Disable when running the standalone reviewer demo without Prometheus Operator CRDs.
+observability:
+  enabled: true
