@@ -1,3 +1,4 @@
+{{- if .Values.observability.enabled }}
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -24,3 +25,4 @@ spec:
           annotations:
             summary: "Aspecta backend Prometheus target missing"
             description: "No backend scrape target has been discovered for at least one minute."
+{{- end }}
