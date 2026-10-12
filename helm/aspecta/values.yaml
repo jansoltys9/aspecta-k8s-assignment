@@ -17,7 +17,7 @@ backend:
     targetCPUUtilizationPercentage: 70
   image:
     repository: ghcr.io/jansoltys9/aspecta-backend
-    tag: sha-f61e8074e2553dd9ff3e3503a9797718d2ff0feb
+    tag: sha-e15e721956a10a8657296e3096b42245dffafa5d
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -38,7 +38,7 @@ frontend:
     targetCPUUtilizationPercentage: 70
   image:
     repository: ghcr.io/jansoltys9/aspecta-frontend
-    tag: sha-f61e8074e2553dd9ff3e3503a9797718d2ff0feb
+    tag: sha-e15e721956a10a8657296e3096b42245dffafa5d
     pullPolicy: IfNotPresent
   resources:
     requests:
