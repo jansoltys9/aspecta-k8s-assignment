@@ -2,19 +2,19 @@ name: Aspecta - CI, Security, GHCR and GitOps
 
 on:
   pull_request:
-    branches: [main, feat/platform-security-gitops]
+    branches: [main]
     paths:
       - "app/**"
       - "helm/**"
       - ".github/workflows/publish-images.yml"
-      - "scripts/promote-images.py"
+      - ".github/scripts/promote-images.py"
   push:
-    branches: [main, feat/platform-security-gitops]
+    branches: [main]
     paths:
       - "app/**"
       - "helm/**"
       - ".github/workflows/publish-images.yml"
-      - "scripts/promote-images.py"
+      - ".github/scripts/promote-images.py"
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect application changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      ci: ${{ steps.filter.outputs.ci }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          base: ${{ github.ref }}
+          filters: |
+            app:
+              - 'app/**'
+            ci:
+              - '.github/workflows/publish-images.yml'
+              - '.github/scripts/promote-images.py'
+
   validate:
     name: Validate application and Helm
     runs-on: ubuntu-latest
@@ -64,7 +90,11 @@ jobs:
 
   scan:
     name: Trivy HIGH/CRITICAL - ${{ matrix.component }}
-    needs: validate
+    needs: [validate, changes]
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.app == 'true' ||
+      needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -105,8 +135,11 @@ jobs:
 
   publish:
     name: Publish GHCR - ${{ matrix.component }}
-    if: github.event_name != 'pull_request'
-    needs: [validate, scan]
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main' &&
+      (needs.changes.outputs.app == 'true' || github.event_name == 'workflow_dispatch')
+    needs: [validate, changes, scan]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -149,8 +182,8 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
   promote-gitops:
-    name: Promote images to GitOps (pilot branch)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feat/platform-security-gitops'
+    name: Promote images to GitOps
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: publish
     runs-on: ubuntu-latest
     permissions:
@@ -159,7 +192,7 @@ jobs:
       - name: Checkout deployment branch
         uses: actions/checkout@v4
         with:
-          ref: feat/platform-security-gitops
+          ref: ${{ github.ref_name }}
           persist-credentials: true
 
       - name: Set up Helm
@@ -172,17 +205,19 @@ jobs:
           IMAGE_OWNER: ${{ github.repository_owner }}
           IMAGE_SHA: ${{ github.sha }}
         run: |
-          python3 scripts/promote-images.py \
+          python3 .github/scripts/promote-images.py \
             --owner "$IMAGE_OWNER" --sha "$IMAGE_SHA"
           helm template aspecta ./helm/aspecta \
             --namespace aspecta-app > /tmp/aspecta.yaml
 
       - name: Commit desired image versions
+        env:
+          DEPLOY_BRANCH: ${{ github.ref_name }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add helm/aspecta/values.yaml
           if ! git diff --cached --quiet; then
             git commit -m "chore(gitops): promote images for $GITHUB_SHA [skip ci]"
-            git push origin HEAD:feat/platform-security-gitops
+            git push origin "HEAD:$DEPLOY_BRANCH"
           fi

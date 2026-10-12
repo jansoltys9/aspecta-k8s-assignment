@@ -6,7 +6,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-10"
 spec:
-  project: default
+  project: aspecta-platform
   source:
     repoURL: https://kubernetes-sigs.github.io/metrics-server/
     chart: metrics-server

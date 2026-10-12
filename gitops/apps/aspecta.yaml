@@ -8,7 +8,7 @@ spec:
 
   source:
     repoURL: https://github.com/jansoltys9/aspecta-k8s-assignment.git
-    targetRevision: feat/platform-security-gitops
+    targetRevision: main
     path: helm/aspecta
     helm:
       releaseName: aspecta

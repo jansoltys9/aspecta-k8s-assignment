@@ -4,11 +4,11 @@ metadata:
   name: aspecta-root
   namespace: argocd
 spec:
-  project: default
+  project: aspecta
 
   source:
     repoURL: https://github.com/jansoltys9/aspecta-k8s-assignment.git
-    targetRevision: feat/platform-security-gitops
+    targetRevision: main
     path: gitops/apps
 
   destination:

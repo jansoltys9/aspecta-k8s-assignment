@@ -6,10 +6,10 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-20"
 spec:
-  project: default
+  project: aspecta-platform
   source:
     repoURL: https://github.com/jansoltys9/aspecta-k8s-assignment.git
-    targetRevision: feat/platform-security-gitops
+    targetRevision: main
     path: platform/storage
   destination:
     server: https://kubernetes.default.svc
