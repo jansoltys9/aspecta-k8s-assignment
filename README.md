@@ -20,7 +20,7 @@ Git repository (Helm chart + values) -> Argo CD -> Kubernetes
 
 The application uses Kubernetes **Deployments**, **ClusterIP Services**, a **Traefik Ingress**, **ConfigMap**, **Secret**, namespace-scoped **RBAC**, **Calico NetworkPolicies**, and **CPU-based HPA** (1–2 replicas per application component). Pods run as non-root with resource limits and health probes.
 
-The full lab adds **Argo CD App-of-Apps**, an application **AppProject**, **Sealed Secrets**, **Metrics Server**, and **Prometheus/Alertmanager** with CSI-backed persistent volumes. The full cluster has one control-plane node and two workers. This is a local demonstration, not production HA storage.
+The full lab adds **Argo CD App-of-Apps**, three scoped **AppProjects**, **Sealed Secrets**, **Metrics Server**, and **Prometheus/Alertmanager** with CSI-backed persistent volumes. The full cluster has one control-plane node and two workers. This is a local demonstration, not production HA storage.
 
 ## Installation — quick demo
 
@@ -81,6 +81,8 @@ bash scripts/aspecta-env.sh --help
 bash scripts/aspecta-uis.sh start
 bash scripts/aspecta-uis.sh status
 ```
+
+**Engineering documentation:** [Repository and GitOps map](docs/REPOSITORY-AND-GITOPS-MAP.md), [Stack and tool versions](docs/STACK-AND-VERSIONS.md), [CI/CD and development flow](docs/CI-CD-AND-DEVELOPMENT-FLOW.md), [Release playbooks](docs/CHANGE-AND-RELEASE-GUIDE.md), and [Operations lifecycle](docs/OPERATIONS-LIFECYCLE.md).
 
 ## Build and CI/CD
 
