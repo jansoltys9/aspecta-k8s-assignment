@@ -1,26 +1,21 @@
-# Changes and release versions
+# Branch names and versions – quick rules
 
-**For step-by-step commands, start with [Operations A/B/C/D](OPERATIONS.md).** This page only explains the version rules so you can choose the right one.
+**Need exact commands?** Pick [A/B/C/D](OPERATIONS.md). This page is just the cheat sheet.
 
-| If you change... | Branch example | What gets a new version? |
+| Example change | Branch name | What version changes? |
 |---|---|---|
-| Backend logic | `fix/backend-response` | Backend: `v0.1.0 → v0.1.1` |
-| Frontend feature | `feat/frontend-search` | Frontend: next `MINOR` release |
-| Backend Dockerfile/base image | `fix/backend-base-image` | Backend: new PATCH image release |
-| Workflow / Trivy / promotion script | `ci/update-checkout` | **Nothing** in the application |
-| Memory limits in `values.yaml` | `config/backend-memory` | No app or chart bump for routine values |
-| Helm template | `chart/backend-readiness` | Helm `Chart.yaml: version` (usually PATCH) |
-| Monitoring/Traefik/Argo CD chart | `platform/monitoring-upgrade` | Only the selected third-party chart pin |
-| Docs | `docs/simplify-guides` | No runtime version |
+| Fix backend API | `fix/backend-response` | Backend image `v0.1.0` → `v0.1.1` |
+| Add a frontend feature | `feat/frontend-search` | Frontend image `v0.1.0` → `v0.2.0` |
+| Update backend base image | `fix/backend-base-image` | Backend new PATCH release |
+| Fix Actions workflow | `ci/update-checkout` | No application release |
+| Increase backend RAM | `config/backend-memory` | No image change |
+| Update Helm deployment template | `chart/backend-probe` | Our `Chart.yaml version` (usually PATCH) |
+| Upgrade Alertmanager via monitoring chart | `platform/monitoring-upgrade` | `kube-prometheus-stack` chart pin, not app images |
+| Tune Argo CD values | `platform/argocd-resources` | No chart bump for values-only change; manual Helm apply |
+| Improve docs | `docs/reviewer-clarity` | No version |
 
-### Three different version numbers
+**Three separate versions:** app Git tags `backend-vX.Y.Z` / `frontend-vX.Y.Z` (published images `vX.Y.Z`); our chart version in `helm/aspecta/Chart.yaml`; and third-party chart versions in GitOps or `platform/*/CHART_VERSION`.
 
-- **Application:** Git tags `backend-vX.Y.Z`, `frontend-vX.Y.Z`; GHCR images use `vX.Y.Z`.
-- **Our Helm chart:** `helm/aspecta/Chart.yaml` → `version`; template/packaging contract, **not** an app image.
-- **Platform charts:** `gitops/apps/*.yaml` → Helm `targetRevision`, or `platform/{traefik,argocd}/CHART_VERSION`.
+PATCH = fix or secure rebuild; MINOR = compatible feature; MAJOR = breaking change. During `0.x`, document breaking changes clearly. The Helm `appVersion` is informational; it cannot describe two independently versioned services.
 
-`Chart.yaml appVersion` is informational and cannot represent the two independent app versions.
-
-**SemVer shortcuts:** PATCH = fix/security rebuild; MINOR = compatible feature; MAJOR = incompatible change (document breaking changes explicitly while in the `0.x` series).
-
-**Best habit:** change → branch → PR → validation → merge → deploy → verify. For an app release, create the version tag **after merge** on the intended app commit, never on the `chore(gitops)` bot commit. Do not move existing release tags.
+**Release tags:** use an approved *application commit* already merged to `main`, not an automatic `chore(gitops)` promotion commit containing `[skip ci]`. Never move or reuse an existing tag. [Application example](operations/A-APPLICATION.md).

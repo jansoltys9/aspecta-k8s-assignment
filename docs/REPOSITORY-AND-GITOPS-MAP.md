@@ -1,44 +1,40 @@
-# Architecture and repository map
-
-The repo holds the app, its Helm configuration, the GitOps desired state and local platform bootstrap files. **The Git repository is the source of truth** for Argo CD-managed workloads.
+# Repository and GitOps map
 
 ```text
 aspecta-k8s-assignment/
-├── app/backend/ and app/frontend/  Application source and Dockerfiles
-├── .github/workflows/           GitHub Actions
-├── .github/scripts/             Image promotion script
-├── helm/aspecta/                App chart, values.yaml and templates
-├── gitops/bootstrap/            Argo CD root Application
-├── gitops/apps/                 Child Applications and AppProjects
+├── app/{backend,frontend}/       Code and Dockerfiles (A)
+├── .github/{workflows,scripts}/  CI/CD (B)
+├── helm/aspecta/                Application chart and image tags (C)
+├── gitops/bootstrap/            Root Argo CD Application
+├── gitops/apps/                 AppProjects and child Applications (C/D)
 ├── gitops/secrets/              Encrypted Sealed Secret
-├── platform/                    Argo CD, Traefik, monitoring, storage config
-├── scripts/                     Bootstrap, daily lifecycle, UI helpers
-└── docs/                        Setup, daily use, operations A/B/C/D
+├── platform/                    Argo CD, Traefik, monitoring, storage (D)
+├── scripts/                     Bootstrap and daily helpers
+└── docs/                        Setup and short A/B/C/D playbooks
 ```
-
-## How GitOps is organised
 
 ```mermaid
 flowchart TD
-  Repo[Git: main] --> Root[Argo CD root / App-of-Apps]
-  Root --> App[Aspecta Helm chart]
-  Root --> Addons[Monitoring, Metrics Server, Sealed Secrets, StorageClass]
-  App --> FE[Frontend Deployment + Service]
-  App --> BE[Backend Deployment + Service]
-  Traefik[Traefik Ingress - direct Helm install] --> FE
-  Traefik --> BE
-  Addons --> Metrics[Prometheus / Alertmanager]
-  CSI[Minikube CSI HostPath addon] --> PVC[Monitoring PVCs]
-  Addons --> PVC
+  Git[Git main] --> Root[Argo CD root: gitops/apps]
+  Root --> App[App Application: Helm chart]
+  Root --> Mon[Monitoring, Metrics Server, Sealed Secrets, Storage]
+  App --> Front[Frontend]
+  App --> Back[Backend]
+  Mon --> AM[Prometheus / Alertmanager]
+  Traefik[Traefik: direct Helm] --> Front
+  Traefik --> Back
+  CSI[Minikube CSI HostPath addon] --> PVC[Monitoring PVC]
+  Mon --> PVC
 ```
 
-| Resource | Owner | How it changes |
+| Area | Managed by | Change path |
 |---|---|---|
-| App Deployments, Services, Ingress, HPA, RBAC, NetworkPolicy | Argo CD (`aspecta`) | Change `helm/aspecta/**`, merge into `main` |
-| Monitoring, Metrics Server, Sealed Secrets controller, StorageClass | Argo CD child Applications | Change `gitops/apps/**` or referenced values |
-| Traefik and Argo CD itself | Direct, pinned Helm releases | Planned Helm upgrade; see [D](operations/D-PLATFORM.md) |
-| CSI HostPath driver | Minikube addon | Local storage helper; **not** an Argo CD Helm release |
+| App Deployments, Services, HPA, policies | Argo CD `aspecta` (auto-sync) | `helm/aspecta/**` |
+| Monitoring, Alertmanager and other GitOps add-ons | Argo CD child Applications | `gitops/apps/**`, `platform/monitoring/**` |
+| Root list of Applications | Argo CD `aspecta-root` (**manual sync**) | `gitops/apps/**` |
+| Argo CD and Traefik releases | **Direct Helm**, not self-managed by Argo CD | `platform/argocd/**`, `platform/traefik/**` |
+| CSI HostPath driver | Minikube addon/helper | `scripts/aspecta-storage.sh` |
 
-Argo CD uses `main` and `helm/aspecta` for the application. It can reconcile a changed `values.yaml` **without rebuilding** Docker images. Helm CLI's historical `helm list` record for Aspecta is not the main app's GitOps source of truth.
+**Important:** the root Application watches `gitops/apps/` but has no automated `syncPolicy`. When you change a child Application definition such as `gitops/apps/monitoring.yaml`, merge the PR and then **Sync `aspecta-root` in the Argo CD UI**; the child can then auto-sync. In contrast, a change to monitoring `values-minikube.yaml` alone is picked up by the already-running child.
 
-**Security:** Calico NetworkPolicies control app traffic, RBAC limits the auditor's permissions, and Sealed Secrets provides the full-lab auth Secret. **Limits:** local CSI storage and a single-node demo are not production HA.
+For real examples and branches use [Operations](OPERATIONS.md). For first-time installation use [Bootstrap modes](BOOTSTRAP-MODES.md). Full lab uses local storage (not production-grade HA); secrets must be encrypted with the destination cluster's Sealed Secrets certificate.

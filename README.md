@@ -1,100 +1,72 @@
 # Aspecta Kubernetes Assignment
 
-A small frontend/backend application deployed to Kubernetes, with security controls, autoscaling, monitoring, and a GitOps-based delivery pipeline.
+A small frontend/backend application on Kubernetes, built to demonstrate secure deployments, CI/CD, GitOps, autoscaling and monitoring.
 
-## Design
+## Architecture
 
 ```text
-Developer -> GitHub Actions (build, validation, Trivy) -> GHCR images
-                                        |
-                              GitOps image promotion
-                                        v
-Git repository (Helm chart + values) -> Argo CD -> Kubernetes
-                                             |
-                                  Traefik Ingress
-                                  /           \
-                             Frontend       Backend (/api, /metrics)
-                                             |
-                                   Prometheus + Alertmanager
+Developer -> GitHub Actions (tests, Docker build, Trivy) -> GHCR
+                           |                                 |
+                           |                          SemVer images
+                           v                                 |
+                 GitOps promotion ---------------------------+
+                           |
+                  Git: Helm values
+                           v
+                       Argo CD -> Kubernetes
+                                   |
+                              Traefik Ingress
+                              /            \
+                         Frontend         Backend (/api, /metrics)
+                                                 |
+                                         Prometheus / Alertmanager
 ```
 
-The application uses Kubernetes **Deployments**, **ClusterIP Services**, a **Traefik Ingress**, **ConfigMap**, **Secret**, namespace-scoped **RBAC**, **Calico NetworkPolicies**, and **CPU-based HPA** (1–2 replicas per application component). Pods run as non-root with resource limits and health probes.
+The application has **Deployments, ClusterIP Services, Ingress, ConfigMap, Secret, RBAC, Calico NetworkPolicies, CPU HPA, health probes, and non-root containers**. The full lab adds Argo CD App-of-Apps, Sealed Secrets and monitoring on three Minikube nodes.
 
-The full lab adds **Argo CD App-of-Apps**, three scoped **AppProjects**, **Sealed Secrets**, **Metrics Server**, and **Prometheus/Alertmanager** with CSI-backed persistent volumes. The full cluster has one control-plane node and two workers. This is a local demonstration, not production HA storage.
+## Quick start for reviewers
 
-## Installation — quick demo
-
-Prerequisites: **Docker Desktop**, **Minikube**, **kubectl**, **Helm**, **Git**, **Bash** (Git Bash on Windows is supported), and **OpenSSL**. Docker needs sufficient free memory; the bootstrap selects a suitable single-node profile based on available resources. Internet access is required for the initial image and chart downloads.
+**Requirements:** Docker Desktop (Linux containers), Git/Git Bash, Minikube, kubectl, Helm, OpenSSL, internet access and at least **4 GiB available to Docker**.
 
 ```bash
 git clone https://github.com/jansoltys9/aspecta-k8s-assignment.git
 cd aspecta-k8s-assignment
-
-# Stage 1: Kubernetes, Calico, Traefik (no application yet)
 bash scripts/aspecta-bootstrap.sh --mode demo --phase infra
-
-# Stage 2: Metrics Server, locally generated Secret, application Helm release
 bash scripts/aspecta-bootstrap.sh --mode demo --phase app
 ```
 
-This demo uses the public GHCR images and a newly generated local authentication token. It **does not require the author's Sealed Secrets key**. Prometheus custom resources are disabled in demo mode.
-
-## Usage and verification
-
-Start an Ingress port-forward in a separate terminal:
+In **another terminal**:
 
 ```bash
 kubectl --context aspecta-review -n traefik port-forward svc/traefik 18082:80
 ```
 
-Open **http://127.0.0.1:18082/** and click **Call Backend API**, or test directly:
+Open <http://127.0.0.1:18082/> and select **Call Backend API**, or run:
 
 ```bash
-curl -f http://127.0.0.1:18082/
 curl -f http://127.0.0.1:18082/api/hello
 kubectl --context aspecta-review -n aspecta-app get deploy,pods,hpa
 ```
 
-To stop the quick demo without deleting the cluster:
+Stop without deleting the demo: `minikube stop -p aspecta-review`.
 
-```bash
-minikube stop -p aspecta-review
-```
+**Demo versus full lab:** the one-node demo intentionally skips Argo CD and Prometheus; it uses public GHCR images and generates its own local Secret. The separately demonstrated **full lab** includes GitOps and Prometheus/Alertmanager. Its setup is guided rather than a single unattended command; it requires more resources and a newly sealed Secret. See [first-time setup](docs/BOOTSTRAP-MODES.md) and [full-lab Secrets](docs/FULL-LAB-SECRETS.md).
 
-## Full GitOps lab (advanced)
+## Where to go next
 
-For the full multi-node lab, use the same staged bootstrap:
-For a new full GitOps cluster, see the [Sealed Secrets setup](docs/FULL-LAB-SECRETS.md).
+| You want to... | Read |
+|---|---|
+| Install a full GitOps lab | [Bootstrap modes](docs/BOOTSTRAP-MODES.md) |
+| Start or stop an existing full lab | [Daily operations](docs/OPERATIONS-LIFECYCLE.md) |
+| Change app, CI, Helm, monitoring or Argo CD | [Choose A/B/C/D](docs/OPERATIONS.md) |
+| Understand versions and releases | [Release rules](docs/CHANGE-AND-RELEASE-GUIDE.md) |
+| See architecture and ownership | [Repository map](docs/REPOSITORY-AND-GITOPS-MAP.md) |
+| Find exact tools/chart versions | [Stack and versions](docs/STACK-AND-VERSIONS.md) |
 
-```bash
-bash scripts/aspecta-bootstrap.sh --mode full --phase infra
-bash scripts/aspecta-bootstrap.sh --mode full --phase gitops
-```
+## Delivery and verification
 
-The `gitops` phase provides **guided Argo CD/App-of-Apps setup**; it does not automatically provision and sync every add-on on a brand-new cluster. New clusters require a **new SealedSecret encrypted using their controller's public certificate**. See [Bootstrap Modes](docs/BOOTSTRAP-MODES.md).
+Application/Helm/CI pull requests run validation and, when applicable, Trivy scans. Docs-only changes do not trigger this workflow. Independent Git tags such as `backend-v0.1.0` and `frontend-v0.1.0` publish images to GHCR, update `helm/aspecta/values.yaml`, and allow Argo CD to roll out the selected service. Both `v0.1.0` images were verified running with Argo CD `Synced / Healthy` on 13 October 2026.
 
-For an existing full lab, the helpers provide environment checks, startup/stop, diagnostics and UI port-forwarding:
+The CI workflow renders **and packages** the Helm chart during validation; the app chart is kept in Git rather than published to a chart registry. See [CI/CD flow](docs/CI-CD-AND-DEVELOPMENT-FLOW.md) for the details.
 
-```bash
-bash scripts/aspecta-env.sh check
-bash scripts/aspecta-env.sh --help
-bash scripts/aspecta-uis.sh start
-bash scripts/aspecta-uis.sh status
-```
-
-**Engineering documentation:** [Repository and GitOps map](docs/REPOSITORY-AND-GITOPS-MAP.md), [Stack and tool versions](docs/STACK-AND-VERSIONS.md), [CI/CD and development flow](docs/CI-CD-AND-DEVELOPMENT-FLOW.md), [Release playbooks](docs/CHANGE-AND-RELEASE-GUIDE.md), and [Operations lifecycle](docs/OPERATIONS-LIFECYCLE.md).
-
-## Build and CI/CD
-
-The source Dockerfiles are in `app/backend/` and `app/frontend/`. Local verification:
-
-```bash
-docker build -t aspecta-backend:dev ./app/backend
-docker build -t aspecta-frontend:dev ./app/frontend
-helm lint ./helm/aspecta
-helm template aspecta ./helm/aspecta -n aspecta-app --set observability.enabled=false
-```
-
-GitHub Actions (`.github/workflows/publish-images.yml`) validates the source and Helm chart, scans images with **Trivy**, publishes versioned images to **GHCR**, and promotes approved image references in Git. Argo CD reconciles Helm-generated Kubernetes manifests with the repository. The application Helm chart remains in Git; no separate chart registry is required.
-
-**Scope:** The single-node demo is not highly available. The full lab uses local CSI Hostpath storage and local port-forwarding; production deployments require managed storage, appropriate TLS, protected release branches and operational access controls.
+**Scope:** this is a Minikube assignment, not a claim of production HA. The full lab uses local CSI HostPath storage; production would need managed storage, external TLS, stronger access controls and backup/recovery planning.

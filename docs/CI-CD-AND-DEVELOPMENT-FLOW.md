@@ -1,38 +1,36 @@
-# CI/CD: code to Kubernetes
-
-A developer pushes *source code*. GitHub Actions builds the release images; Argo CD deploys what the Git repository requests.
+# CI/CD – from code to a running Pod
 
 ```mermaid
 flowchart TD
-  Dev[App change on a feature branch] --> PR[Pull request]
-  PR --> Checks[Validate + Helm + Trivy]
-  Checks --> Merge[Merge to main]
-  Merge --> Tag[Release tag: backend-vX.Y.Z or frontend-vX.Y.Z]
-  Tag --> Publish[GitHub Actions: build and publish one image to GHCR]
-  Publish --> Promote[Bot updates one image tag in helm/aspecta/values.yaml]
-  Promote --> Argo[Argo CD watches main]
-  Argo --> K8s[Rollout on Kubernetes]
-  K8s --> Test[Check image tag, Pods and HTTP]
+  Change[Application branch] --> PR[Pull request]
+  PR --> CI[Build, validate Helm, scan images with Trivy]
+  CI --> Merge[Merge into main]
+  Merge --> Tag[Create backend-vX.Y.Z or frontend-vX.Y.Z on approved app commit]
+  Tag --> GHCR[GitHub Actions publishes selected image to GHCR]
+  GHCR --> Promote[Bot changes only that image tag in Helm values]
+  Promote --> Argo[Argo CD syncs application from main]
+  Argo --> Pods[Kubernetes rollout and HTTP smoke test]
 ```
 
-| Event | Validation/Trivy | GHCR publish | GitOps promotion |
+| Event | CI checks | Publish image | GitOps promotion |
 |---|---|---|---|
-| App pull request | Yes | No | No |
-| Ordinary push / merge to `main` | Validation (scans according to changes) | No | No |
-| `backend-v0.1.1` tag | Yes | **Backend only** | Backend image tag only |
-| `frontend-v0.1.1` tag | Yes | **Frontend only** | Frontend image tag only |
+| Docs-only PR/push | **No** app workflow | No | No |
+| App/Helm/CI PR | Yes (Trivy for app/CI changes) | No | No |
+| App/Helm/CI push into `main` | Validation; scans according to changes | No | No |
+| `backend-v0.1.1` tag | Yes, scans both components | Backend only | Backend tag only |
+| `frontend-v0.1.1` tag | Yes, scans both components | Frontend only | Frontend tag only |
+| Platform-only PR | **No** app workflow | No | See [D](operations/D-PLATFORM.md) |
 
-The release workflow scans **both** components, but publishes only the one named in the Git tag. It publishes `vX.Y.Z` and `sha-<commit>` tags for that component. The promotion commit includes `[skip ci]` to avoid a second CI run. **Do not put a release tag on that bot commit**; choose the merged app change instead.
+Both services have independent versions and share one Helm chart. GitHub Actions also builds a **temporary Helm chart package** during validation; it doesn't push that chart to a separate registry. The release promotion edits the chart's `values.yaml` in Git. Argo CD then reconciles Kubernetes.
 
-There is one Helm chart for both services; each image has its **own** version. For exact branch names and commands, use [A – Application](operations/A-APPLICATION.md).
-
-**Check after release:**
+**Example:** fixing only backend means a new `backend-v0.1.1` release while frontend remains at `v0.1.0`. See [Application steps](operations/A-APPLICATION.md). For config-only changes use [Helm/GitOps](operations/C-HELM-GITOPS.md); for infrastructure/add-on upgrades use [Platform](operations/D-PLATFORM.md).
 
 ```bash
+# Check desired state and actual deployed images after a release:
 git pull --ff-only origin main
-kubectl -n argocd get application aspecta
+kubectl -n argocd get applications
 kubectl -n aspecta-app get deployment aspecta-backend aspecta-frontend \
   -o custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image
 ```
 
-A green GitHub Actions run is not the same thing as a healthy Deployment. Also test the app through Traefik; see [Daily use](OPERATIONS-LIFECYCLE.md).
+`Synced / Healthy` is useful, but also test `/` and `/api/hello` through Traefik. A workflow success does not by itself prove that the new image is running.

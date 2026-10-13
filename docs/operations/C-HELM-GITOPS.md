@@ -1,46 +1,41 @@
-# C – Helm and GitOps configuration
+# C – Change Helm or application GitOps
 
-**Use this for:** `helm/aspecta/values.yaml`, `helm/aspecta/templates/**`, or app GitOps manifests.
+**Use for:** `helm/aspecta/**`, app ConfigMaps/HPA/RBAC/NetworkPolicies or `gitops/apps/aspecta.yaml`. A config-only change **doesn't need a new Docker image**.
 
-**Result:** Argo CD applies the Git change. There is **no new Docker image** and no backend/frontend version bump for a config-only change.
-
-## Example C1: increase backend memory
-
-Change `backend.resources.limits.memory` from `256Mi` to `384Mi`.
+## Example C1: raise backend memory limit
 
 ```bash
 git switch main
 git pull --ff-only origin main
 git switch -c config/backend-memory
-# Edit helm/aspecta/values.yaml: backend.resources.limits.memory: 384Mi
-# Leave backend.image.tag and frontend.image.tag alone.
+# In helm/aspecta/values.yaml change backend.resources.limits.memory
+# e.g. from 256Mi to 384Mi. Leave the image tags unchanged.
 helm lint ./helm/aspecta
-helm template aspecta ./helm/aspecta -n aspecta-app > /tmp/aspecta-rendered.yaml
+helm template aspecta ./helm/aspecta -n aspecta-app >/tmp/aspecta.yaml
 git diff --check
-git diff -- helm/aspecta/values.yaml
 git add helm/aspecta/values.yaml
 git commit -m "chore(helm): increase backend memory limit"
 git push -u origin config/backend-memory
 ```
 
-Open PR → wait for checks → merge. Then:
+PR → checks → merge → app Argo CD auto-sync:
 
 ```bash
 kubectl -n argocd get application aspecta
-kubectl -n aspecta-app get deployment aspecta-backend \
+kubectl -n aspecta-app get deploy aspecta-backend \
   -o jsonpath='{.spec.template.spec.containers[0].resources.limits.memory}{"\n"}'
 ```
 
-Expected: `384Mi` and `Synced / Healthy`. Existing image tags remain unchanged.
+Expected: new memory limit, unchanged image tags. **No** app version or chart version bump for a routine values change.
 
 ## Example C2: change a Helm template
 
-Branch `chart/backend-readiness`, edit `helm/aspecta/templates/backend-deployment.yaml`; run the same Helm checks and PR flow. If releasing a changed chart template/default contract, bump **`version`** in `helm/aspecta/Chart.yaml` (example `0.1.1 → 0.1.2`). No application release tag is needed.
+Branch `chart/backend-probe`. Edit `helm/aspecta/templates/backend-deployment.yaml`, validate as above, bump `helm/aspecta/Chart.yaml` **`version`** for a template release (e.g. `0.1.1 → 0.1.2`), then PR and merge. `appVersion` is informational; both services retain separate image tags.
 
-Changing only an image tag or routine `values.yaml` setting does **not** require a chart version bump. `Chart.yaml appVersion` is informational; it is **not** the version of two independent services.
+## Example C3: change the app Argo CD Application
 
-## Example C3: rotate a Secret
+Branch `gitops/app-sync-policy`. Edit `gitops/apps/aspecta.yaml`, review it, PR and merge. **Different from editing a Helm values file:** `aspecta-root` watches `gitops/apps/` without automated sync. **Manually Sync `aspecta-root` in the Argo CD UI**, then verify the child Application. No app image release is needed.
 
-Branch `gitops/rotate-backend-secret`. In the **full** lab, use Sealed Secrets and your own controller certificate; see [Full-lab Secrets](../FULL-LAB-SECRETS.md). Commit **encrypted data only**. Do not place plaintext passwords or tokens in Git.
+## Secrets and recovery
 
-**If something breaks:** inspect the Argo CD Diff and Pods; revert the bad Git commit through a PR. Do not `kubectl edit deployment` or `helm upgrade aspecta`: Argo CD owns this release.
+For Sealed Secrets use [full-lab setup](../FULL-LAB-SECRETS.md); commit only encrypted data. If a change breaks the app, revert it via Git PR. Don't manually `kubectl edit` or run `helm upgrade aspecta` against Argo CD-owned workloads.

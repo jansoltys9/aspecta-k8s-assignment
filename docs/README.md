@@ -1,17 +1,18 @@
-# Aspecta documentation
+# Documentation – start here
 
-**Start here.** Pick what you want to do; you do not need to read everything.
+You only need the guide for what you're doing.
 
-| I want to... | Open |
+| Task | Guide |
 |---|---|
-| Run the app on a new laptop (quick reviewer demo) | [First-time setup](BOOTSTRAP-MODES.md) |
-| Start or stop my existing 3-node lab | [Daily use](OPERATIONS-LIFECYCLE.md) |
-| Change code, CI, Helm or an add-on | [Operations: choose A/B/C/D](OPERATIONS.md) |
-| Understand how a release reaches Kubernetes | [CI/CD flow](CI-CD-AND-DEVELOPMENT-FLOW.md) |
-| See where components live | [Architecture and repository map](REPOSITORY-AND-GITOPS-MAP.md) |
-| Check which versions mean what | [Versions](STACK-AND-VERSIONS.md) |
-| Set up secrets in a *new full* GitOps lab | [Full-lab Sealed Secrets](FULL-LAB-SECRETS.md) |
+| Run the app on a new laptop | [First-time demo](BOOTSTRAP-MODES.md) |
+| Start/stop the existing three-node lab | [Daily operations](OPERATIONS-LIFECYCLE.md) |
+| Change source, pipeline, Helm, or an add-on | **[Choose A/B/C/D](OPERATIONS.md)** |
+| Learn version and branch rules | [Release rules](CHANGE-AND-RELEASE-GUIDE.md) |
+| Understand CI/CD and GitOps | [CI/CD diagram](CI-CD-AND-DEVELOPMENT-FLOW.md) |
+| Find components and ownership | [Repository map](REPOSITORY-AND-GITOPS-MAP.md) |
+| Check current versions | [Versions](STACK-AND-VERSIONS.md) |
+| Install Sealed Secrets in a new full lab | [Full-lab Secrets](FULL-LAB-SECRETS.md) |
 
-The quick demo takes two bootstrap phases. The full GitOps lab is an **advanced, guided** setup and needs more RAM and a fresh Sealed Secret. Do not use full-lab commands to install a simple reviewer demo.
+The quick demo is the recommended reviewer starting point; the full GitOps lab is a separate, guided setup.
 
-**Validated release example (13 Oct 2026):** backend `v0.1.0` and frontend `v0.1.0` were deployed; Argo CD reported `Synced / Healthy`. See live versions with the commands in [Versions](STACK-AND-VERSIONS.md).
+**Verified 13 Oct 2026:** backend and frontend images `v0.1.0` running, Argo CD `Synced / Healthy`, Prometheus and Alertmanager pods running. For current status, use the checks in the linked guides.
