@@ -1,41 +1,29 @@
-# C – Mením Helm alebo Kubernetes konfiguráciu
+# C – Helm and GitOps configuration
 
-**Použi, keď meníš:** `helm/aspecta/values.yaml`, `helm/aspecta/templates/` alebo súvisiace GitOps manifesty.
+**Use this for:** `helm/aspecta/values.yaml`, `helm/aspecta/templates/**`, or app GitOps manifests.
 
-**Výsledok:** Argo CD z Gitu aplikuje konfiguráciu. **Nový backend/frontend Docker image sa kvôli tomu nevytvára.**
+**Result:** Argo CD applies the Git change. There is **no new Docker image** and no backend/frontend version bump for a config-only change.
 
-## Príklad C1: zvýšim RAM limit backendu
+## Example C1: increase backend memory
 
-Zmena `backend.resources.limits.memory` z `256Mi` na `384Mi`.
-
-### 1. Úprava v samostatnej vetve
+Change `backend.resources.limits.memory` from `256Mi` to `384Mi`.
 
 ```bash
 git switch main
 git pull --ff-only origin main
 git switch -c config/backend-memory
-
-# Vo VS Code uprav helm/aspecta/values.yaml:
-# backend -> resources -> limits -> memory: 384Mi
+# Edit helm/aspecta/values.yaml: backend.resources.limits.memory: 384Mi
+# Leave backend.image.tag and frontend.image.tag alone.
 helm lint ./helm/aspecta
-helm template aspecta ./helm/aspecta --namespace aspecta-app > /tmp/aspecta-rendered.yaml
+helm template aspecta ./helm/aspecta -n aspecta-app > /tmp/aspecta-rendered.yaml
 git diff --check
 git diff -- helm/aspecta/values.yaml
-```
-
-**Nemeň `backend.image.tag`:** ten riadi release pipeline z postupu A.
-
-### 2. PR a merge
-
-```bash
 git add helm/aspecta/values.yaml
 git commit -m "chore(helm): increase backend memory limit"
 git push -u origin config/backend-memory
 ```
 
-Na GitHube otvor PR, skontroluj CI/Helm a mergni do `main`.
-
-### 3. Overenie
+Open PR → wait for checks → merge. Then:
 
 ```bash
 kubectl -n argocd get application aspecta
@@ -43,22 +31,16 @@ kubectl -n aspecta-app get deployment aspecta-backend \
   -o jsonpath='{.spec.template.spec.containers[0].resources.limits.memory}{"\n"}'
 ```
 
-**Očakávam:** `384Mi` a Argo CD `Synced / Healthy`. Image tag backendu zostáva pôvodný.
+Expected: `384Mi` and `Synced / Healthy`. Existing image tags remain unchanged.
 
-## Príklad C2: mením Helm template
+## Example C2: change a Helm template
 
-Napríklad upravíš readiness/liveness probes v `helm/aspecta/templates/backend-deployment.yaml`.
+Branch `chart/backend-readiness`, edit `helm/aspecta/templates/backend-deployment.yaml`; run the same Helm checks and PR flow. If releasing a changed chart template/default contract, bump **`version`** in `helm/aspecta/Chart.yaml` (example `0.1.1 → 0.1.2`). No application release tag is needed.
 
-Postup je rovnaký ako C1, ale pri zmene **samotného chartu/šablóny** zváž zvýšenie `version` v `helm/aspecta/Chart.yaml` (napr. `0.1.0 → 0.1.1`).
+Changing only an image tag or routine `values.yaml` setting does **not** require a chart version bump. `Chart.yaml appVersion` is informational; it is **not** the version of two independent services.
 
-`Chart.yaml appVersion` **nie je** spoločnou verziou backendu a frontendu. Tie zostávajú nezávislé.
+## Example C3: rotate a Secret
 
-## Príklad C3: potrebujem zmeniť tajomstvo
+Branch `gitops/rotate-backend-secret`. In the **full** lab, use Sealed Secrets and your own controller certificate; see [Full-lab Secrets](../FULL-LAB-SECRETS.md). Commit **encrypted data only**. Do not place plaintext passwords or tokens in Git.
 
-**Nepridávaj plaintext heslo do `values.yaml` ani Git repozitára.** V Aspecta sa GitOps secret spravuje cez **Sealed Secrets** (`gitops/secrets/`). Zmenu urob cez jeho existujúci bezpečný postup a over, že sa Secret obnovil. Nový app release je potrebný iba vtedy, keď sa mení aj aplikačný kód.
-
-## Ak sa objaví problém
-
-- Skontroluj `kubectl -n argocd get application aspecta` a `kubectl -n aspecta-app get pods`.
-- Ak konfigurácia pokazí chod služby, **revertuj chybný Git commit cez PR**. Argo CD aplikuje opravený požadovaný stav.
-- Nepoužívaj `kubectl edit deployment` ani `helm upgrade aspecta`: Argo CD tieto objekty riadi cez Git.
+**If something breaks:** inspect the Argo CD Diff and Pods; revert the bad Git commit through a PR. Do not `kubectl edit deployment` or `helm upgrade aspecta`: Argo CD owns this release.

@@ -1,101 +1,85 @@
-# A – Mením aplikáciu alebo Dockerfile
+# A – Application or Dockerfile change
 
-**Použi, keď meníš:** `app/backend/`, `app/frontend/`, prípadne Dockerfile jednej služby.
+**Use this for:** `app/backend/**`, `app/frontend/**`, or either Dockerfile.
 
-**Výsledok:** nový Docker image **iba zmenenej služby**. GitHub Actions ho publikuje do GHCR, upraví Helm image tag a Argo CD nasadí.
+**Result:** a *new version of one service*. The Git tag starts GitHub Actions; it builds/scans, publishes to GHCR and updates `helm/aspecta/values.yaml`. Argo CD deploys the new image.
 
-## Príklad A1: opravím backend (`v0.1.0 → v0.1.1`)
+## Example A1: fix the backend (`v0.1.0` → `v0.1.1`)
 
-### 1. Vyvinúť a odoslať opravu
+**1. Make the fix on a branch**
 
 ```bash
 git switch main
 git pull --ff-only origin main
-git switch -c fix/backend-small-fix
-
-# Vo VS Code uprav app/backend/server.js a ulož súbor.
+git switch -c fix/backend-response
+# Edit app/backend/server.js in VS Code.
 node --check app/backend/server.js
-# Voliteľne: over lokálny Docker build (nič nepublikuje)
 docker build -t aspecta-backend:local ./app/backend
-
 git add app/backend/
 git commit -m "fix(backend): correct API response"
-git push -u origin fix/backend-small-fix
+git push -u origin fix/backend-response
 ```
 
-Na GitHube otvor **PR do `main`**, čakaj na zelené CI kontroly a daj **Squash and merge**.
+Open a **PR to `main`**. Wait for validation/Trivy; merge the PR. A PR and a normal `main` push do **not** publish a release.
 
-### 2. Vydať novú verziu
+**2. Select the merged application commit and create a release tag**
 
 ```bash
 git switch main
 git pull --ff-only origin main
-git log -6 --oneline
+git fetch --tags origin
+git log -5 --oneline -- app/backend
 ```
 
-**Vyber SHA commitu so schválenou backend opravou po merge.** Nesmie ísť o automatický `chore(gitops)` commit s `[skip ci]`. V nasledujúcom príkaze nahraď `SEM_DAJ_SHA` skutočným SHA z `git log`.
+Choose the SHA of **your merged backend fix** from that output. Check it before tagging:
 
 ```bash
-RELEASE_COMMIT="SEM_DAJ_SHA"
+RELEASE_COMMIT="PASTE_FULL_OR_SHORT_SHA_HERE"
 git show -s --format='%h %s' "$RELEASE_COMMIT"
-git tag -l 'backend-v*'
+git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main
+# Confirm backend-v0.1.1 does not already exist:
+git tag -l 'backend-v0.1.1'
+git ls-remote --tags origin 'refs/tags/backend-v0.1.1'
+```
+
+Only if that tag is unused, and the chosen commit includes the release workflow, continue:
+
+```bash
 git tag -a backend-v0.1.1 "$RELEASE_COMMIT" -m "Release backend v0.1.1"
 git push origin backend-v0.1.1
 ```
 
-**Pozor:** `backend-v0.1.1` je príklad ďalšej verzie. Ak už existuje, zvoľ ďalšiu voľnú verziu. Nikdy existujúci release tag neposúvaj na nový commit. Tagovaný commit musí byť súčasťou `main` a obsahovať aktuálny release workflow.
+**Do not tag a bot commit** such as `chore(gitops): ... [skip ci]`; it may skip the release workflow. If the code or Docker image must change again, use a **new** version, never overwrite a published tag.
 
-### 3. Skontrolovať pipeline a nasadenie
+**3. Check GitHub and Kubernetes**
 
 ```bash
 gh run list --workflow publish-images.yml --limit 5
-# Otvor posledný release run cez gh run view <RUN_ID> alebo GitHub Actions.
-
+# Wait for "Publish release to GHCR" and "Promote ... to GitOps" to succeed.
 git pull --ff-only origin main
 kubectl -n argocd get application aspecta
-kubectl -n aspecta-app rollout status deployment/aspecta-backend --timeout=180s
-kubectl -n aspecta-app get deployments aspecta-backend aspecta-frontend \
+kubectl -n aspecta-app rollout status deploy/aspecta-backend --timeout=180s
+kubectl -n aspecta-app get deploy aspecta-backend aspecta-frontend \
   -o custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image
 ```
 
-**Očakávam:** backend `:v0.1.1`, frontend zostal `:v0.1.0`; Argo CD `Synced / Healthy`.
+Expected: backend `:v0.1.1`; frontend stays at its old version. If Argo CD is still catching up, check again after sync.
 
-## Príklad A2: opravím frontend
+## Example A2: frontend bug or feature
 
-Presne to isté, len:
-
-- súbory: `app/frontend/`
-- vetva: `fix/frontend-small-fix`
-- release tag: `frontend-v0.1.1`
-- kontrola rollout: `deployment/aspecta-frontend`
-
-Napríklad pri ďalšom frontend PATCH release (po PR/merge a kontrole správneho commitu):
+Same steps, but use `fix/frontend-header` (or `feat/frontend-search`), edit `app/frontend/`, and release `frontend-v0.1.1` (or next valid version). Local check:
 
 ```bash
-git tag -a frontend-v0.1.1 "$RELEASE_COMMIT" -m "Release frontend v0.1.1"
-git push origin frontend-v0.1.1
+(cd app/frontend && npm ci && npm run build)
+docker build -t aspecta-frontend:local ./app/frontend
 ```
 
-Tu `RELEASE_COMMIT` nastav na SHA **frontend aplikačného commitu**, nie na starý backend release commit. Pred PR môžeš spustiť:
+After PR merge, pick the **frontend** merge commit (`git log -5 --oneline -- app/frontend`) and create `frontend-vX.Y.Z` on that commit. Verify `deployment/aspecta-frontend` and make sure backend did not change.
 
-```bash
-cd app/frontend
-npm ci
-npm run build
-cd ../..
-```
+## Example A3: base image security update
 
-## Príklad A3: opravím iba Dockerfile
+Changed only `app/backend/Dockerfile`? This is still **A**, not B. Branch `fix/backend-base-image`, open a PR, then issue a new backend PATCH release. CI builds/scans the new image; do not manually `docker push`.
 
-Príklad: bezpečnostná aktualizácia base image v `app/backend/Dockerfile`.
+**Version reminder:** PATCH `0.1.0 → 0.1.1` = fix/rebuild; MINOR `0.1.1 → 0.2.0` = backward-compatible feature. For breaking changes in the `0.x` phase, call out compatibility in the PR.
 
-**Stále ide o novú verziu backend Docker image** (napr. `backend-v0.1.2`), hoci `server.js` sa nezmenil. Postup je identický s A1. CI musí nový image zbuildovať a oskenovať. Frontend nemeníš.
-
-## Čo keď pipeline neprejde?
-
-1. Pozri chybný krok v GitHub Actions (`gh run view RUN_ID --log-failed`).
-2. Ak je chyba v kóde/Dockerfile, oprav ju v novej vetve a urob nový PR.
-3. Pre opravený obsah vytvor **ďalší voľný release tag**. Už publikovanú verziu neprepíš.
-4. Ak image existuje, ale Argo CD ho ešte nenasadilo, porovnaj image tag v `helm/aspecta/values.yaml` s bežiacim Deploymentom.
-
-**Nikdy ručne nepúšťaj `docker push` pre štandardný release.** V Aspecta to robí GitHub Actions po release tagu.
+**If a run fails:** `gh run view RUN_ID --log-failed`. Fix the source through a PR. Do not force-move a tag; publish corrected content under the next unused version.

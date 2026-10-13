@@ -1,64 +1,31 @@
-# Aspecta – čo mám urobiť, keď niečo mením?
+# Operations: what are you changing?
 
-**Začni tu.** Vyber si jednu z možností A/B/C/D. Nemusíš čítať ostatné návody.
+**Pick one case.** Each guide has a branch name, an example, version rules, commands and checks. Commands run from the repository root in Git Bash.
 
-| Chcem zmeniť... | Otvor | Nová verzia backend/frontend? | Kto nasadzuje? |
-|---|---|---|---|
-| Kód backendu, frontend, Dockerfile | [A – Aplikácia a Docker](operations/A-APPLICATION.md) | **Áno**, iba zmenená služba | GitHub Actions → GHCR → Argo CD |
-| GitHub Actions, Trivy, release skript | [B – CI/CD pipeline](operations/B-PIPELINE.md) | **Nie** | PR a kontrola CI |
-| Helm hodnoty, HPA, limity, Kubernetes šablóny | [C – Helm a GitOps](operations/C-HELM-GITOPS.md) | **Nie** (ak sa nemení aplikácia) | Argo CD |
-| Argo CD, Traefik, monitoring a ďalšie addony | [D – Platforma](operations/D-PLATFORM.md) | **Nie** | Argo CD alebo Helm podľa správcu |
+| Case | Change | Branch example | Version change? | Guide |
+|---|---|---|---|---|
+| **A – App** | Backend/frontend code or Dockerfile | `fix/backend-response` | **Yes:** only that service | [A](operations/A-APPLICATION.md) |
+| **B – CI** | GitHub Actions, Trivy, promotion script | `ci/update-checkout` | **No** app version | [B](operations/B-PIPELINE.md) |
+| **C – Helm** | Requests, limits, probes, HPA, RBAC | `config/backend-memory` | **No** app version; chart version if chart is changed | [C](operations/C-HELM-GITOPS.md) |
+| **D – Platform** | Argo CD, Traefik, monitoring, add-ons | `platform/monitoring-upgrade` | **Only** the affected add-on chart/version | [D](operations/D-PLATFORM.md) |
 
-## Najdôležitejší príklad
+### Rules for every change
 
-Zmením iba `app/backend/server.js`:
+1. `git switch main && git pull --ff-only origin main`
+2. Create your branch. Edit only related files. Run checks.
+3. Commit → push → pull request (PR) → wait for checks → merge into `main`.
+4. Check the live result. **Do not edit an Argo CD-managed Deployment by hand.**
+5. Never commit a plaintext Secret. Never move/reuse an already published release tag.
 
-1. Vytvorím vetvu `fix/backend-...` a upravím kód.
-2. Vytvorím Pull Request (PR). CI ho otestuje.
-3. Po merge vydám `backend-v0.1.1` na **aplikáčnom commite**, nie na GitOps commite s `[skip ci]`.
-4. GitHub Actions vyrobí `ghcr.io/jansoltys9/aspecta-backend:v0.1.1`.
-5. Pipeline sama zmení **iba** `backend.image.tag` v `helm/aspecta/values.yaml`.
-6. Argo CD nasadí backend. Frontend zostáva bez zmeny.
+**If a change needs several parts:** fix the pipeline first (B), introduce backward-compatible configuration or platform prerequisites (C/D), then release the app (A). Use separate PRs when possible.
 
-Presné príkazy: **[A – Aplikácia a Docker](operations/A-APPLICATION.md)**.
-
-## Ako čítať verzie
-
-- `backend-v0.1.1` – release tag backendu (Git); Docker image má tag `v0.1.1`.
-- `frontend-v0.1.0` – samostatný frontend release.
-- `helm/aspecta/Chart.yaml: version` – verzia Helm chartu, **nie** backendu/frontend.
-- `platform/traefik/CHART_VERSION` – pripnutá verzia Traefik Helm chartu.
-- `gitops/apps/monitoring.yaml: targetRevision` – verzia monitorovacieho chartu.
-
-**PATCH** (`0.1.0 → 0.1.1`) = fix / security rebuild. **MINOR** (`0.1.1 → 0.2.0`) = nová kompatibilná funkcia. **MAJOR** = veľká nekompatibilná zmena; pri `0.x` ju výslovne opíš v PR.
-
-## Spoločné pravidlá (platia pre A, B, C, D)
-
-1. Pracuj v koreňovom adresári `aspecta-k8s-assignment` a používaj Git Bash.
-2. Pred novou prácou: `git switch main && git pull --ff-only origin main`.
-3. **Zmena → vlastná vetva → PR → kontroly → merge**. Necommituj priamo do `main` (výnimkou je automatický GitOps promotion commit workflow).
-4. **Aplikáciu riadi Argo CD**. Bežne nepoužívaj `kubectl edit` ani `helm upgrade aspecta`; Argo CD by zmeny mohlo vrátiť.
-5. Tajomstvá nikdy neukladaj do Git repozitára ako obyčajné heslá ani plaintext Kubernetes Secret.
-6. Neopakuj už publikovaný release tag s iným obsahom; pri ďalšom fixe zvýš verziu.
-
-## Ak mením viac vecí naraz
-
-**Jednoduché poradie:** B (prípadná oprava pipeline) → C/D (potrebná spätne kompatibilná konfigurácia) → A (aplikácia + SemVer release) → kontrola Argo CD. Každú nezávislú zmenu daj do vlastného PR.
-
-## Rýchla kontrola nasadenia
+### Quick check after a deployment
 
 ```bash
 kubectl -n argocd get application aspecta
-kubectl -n aspecta-app get deployments aspecta-backend aspecta-frontend \
+kubectl -n aspecta-app get deployment aspecta-backend aspecta-frontend \
   -o custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image
 kubectl -n aspecta-app get pods
 ```
 
-Výsledok: Argo CD `Synced / Healthy` a očakávané image tagy. Ak sú rozdielne, skontroluj `helm/aspecta/values.yaml`, posledný GitOps commit a aktuálnu revíziu Argo CD.
-
-## Pozor: dve odlišné úlohy
-
-- **Bežný update** – tento návod; infraštruktúra už beží.
-- **Čisté spustenie pre reviewera** – samostatný inštalačný/demo návod, nie súčasť tohto rozcestníka.
-
-Tieto postupy sú pripravené pre aktuálny Aspecta lab (GitHub Actions + GHCR + Argo CD + Minikube), nie ako univerzálny návod pre každý Kubernetes cluster.
+Expect `Synced / Healthy` and the intended image tags. `Synced` does not replace an API/browser smoke test.

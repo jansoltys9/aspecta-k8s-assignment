@@ -1,67 +1,46 @@
-# B – Mením CI/CD pipeline
+# B – CI/CD pipeline change
 
-**Použi, keď meníš:** `.github/workflows/publish-images.yml` alebo `.github/scripts/promote-images.py`.
+**Use this for:** `.github/workflows/publish-images.yml` or `.github/scripts/promote-images.py`.
 
-**Výsledok:** opravíš automatizáciu. **Nevytváraš** kvôli tomu nový release tag backendu/frontend.
+**Result:** better automation, **no** backend/frontend SemVer bump, and **no** application image published just because the pipeline changed.
 
-## Príklad: aktualizujem GitHub Action
+## Example B1: update a GitHub Action
 
-Príklad: `actions/checkout@v4` → `actions/checkout@v5` (po overení kompatibility).
-
-### 1. Pracovná vetva a úprava
+For example, replace `actions/checkout@v4` with `actions/checkout@v5` after checking compatibility.
 
 ```bash
 git switch main
 git pull --ff-only origin main
 git switch -c ci/update-checkout
-
-# Vo VS Code otvor .github/workflows/publish-images.yml,
-# uprav zvolenú Action, ulož súbor.
+# Edit .github/workflows/publish-images.yml.
 git diff --check
 git diff -- .github/workflows/publish-images.yml
-```
-
-### 2. Pull Request
-
-```bash
 git add .github/workflows/publish-images.yml
 git commit -m "ci: update checkout action"
 git push -u origin ci/update-checkout
 ```
 
-Na GitHube otvor **PR do `main`**, počkaj na CI testy a merge.
-
-### 3. Overenie
+Open PR → check validation and Trivy → merge. On a PR, the publish and GitOps promotion jobs should be **skipped**.
 
 ```bash
 gh run list --workflow publish-images.yml --limit 5
 ```
 
-**Očakávam:** validácia a Trivy prejdú. `Publish release to GHCR` a `Promote ... to GitOps` majú byť pre PR/obyčajný `main` push **Skipped**.
+**Version:** neither application version nor Helm chart version changes. The next release tag will use the new pipeline if its tagged commit includes this workflow update.
 
-### Verzia?
+## Example B2: fix GitOps promotion
 
-- Backend: bez zmeny.
-- Frontend: bez zmeny.
-- Helm values: bez zmeny.
-- **Novú pipeline použije ďalší app release**.
-
-## Príklad: opravím skript GitOps promotion
-
-Zmením `.github/scripts/promote-images.py`. Použijem ten istý postup B. Lokálne testy pred PR:
+Branch `ci/fix-image-promotion`; edit `.github/scripts/promote-images.py`. Before opening the PR:
 
 ```bash
 python -m py_compile .github/scripts/promote-images.py
 python .github/scripts/promote-images.py \
-  --owner jansoltys9 --component backend --tag v0.1.1 --dry-run \
-  | grep -A11 '^backend:'
+  --owner jansoltys9 --component backend --tag v0.1.1 --dry-run
+python .github/scripts/promote-images.py \
+  --owner jansoltys9 --component frontend --tag v0.1.1 --dry-run
 helm lint ./helm/aspecta
 ```
 
-`--dry-run` iba zobrazí návrh zmeny Helm values – neupraví cluster. **Pri zásahu do promotion skriptu over aj frontend prípad.**
+`--dry-run` prints a proposed change only. No Git commit or cluster change occurs. Review both components; test the actual release path later with an intentional **new** app version, not by reusing an old tag.
 
-## Ak CI zlyhá
-
-Oprav tú istú pracovnú vetvu, pushni ďalší commit, pozri novú CI kontrolu. **Nevytváraj release tag** na testovanie samotnej úpravy pipeline.
-
-**Poznámka:** GitOps bot vytvára commity s `[skip ci]`. Release tagy preto vytváraj na schválených aplikačných commitoch (postup A), nie na bot commitoch.
+**If a PR check fails:** fix the same branch and push another commit. Do not make a fake app release to test an ordinary CI edit.

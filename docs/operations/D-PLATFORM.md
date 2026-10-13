@@ -1,101 +1,78 @@
-# D – Mením platformu alebo addony
+# D – Platform and add-on updates
 
-**Použi, keď meníš:** Argo CD, Traefik, monitoring, Sealed Secrets alebo iné platform komponenty.
+**Use this for:** Argo CD, Traefik, monitoring, Metrics Server, Sealed Secrets and storage. **No backend/frontend version bump.**
 
-**Zlaté pravidlo:** najskôr zisti, **kto danú službu spravuje**. Niektoré addony sleduje Argo CD; napr. Traefik a samotný Argo CD boli v tomto labe nasadené samostatným Helm release.
+| Component | Owner | Where to change the version |
+|---|---|---|
+| Monitoring, Metrics Server, Sealed Secrets | Argo CD | `gitops/apps/*.yaml` → add-on Helm `targetRevision` |
+| Traefik | Direct Helm release | `platform/traefik/CHART_VERSION` |
+| Argo CD itself | Direct Helm release | `platform/argocd/CHART_VERSION` |
+| CSI HostPath driver | Minikube addon | `scripts/aspecta-storage.sh`, maintenance procedure |
 
-## Príklad D1: update monitoringu (spravuje Argo CD)
+Before any upgrade: check release notes, Kubernetes support and CRD/PVC implications. Use a branch + PR; perform the upgrade one component at a time.
 
-Napríklad chceš aktualizovať `kube-prometheus-stack` Helm chart.
-
-### 1. Príprava
+## Example D1: upgrade monitoring (Argo CD-owned)
 
 ```bash
 git switch main
 git pull --ff-only origin main
-git switch -c platform/monitoring-update
-
-# Otvor gitops/apps/monitoring.yaml.
-# V zdroji chartu zmeň targetRevision zo súčasnej verzie
-# na novú, OVERENÚ kompatibilnú verziu (nie na "latest").
+git switch -c platform/monitoring-upgrade
+# Check release notes. Edit the CHART targetRevision in gitops/apps/monitoring.yaml.
+# If required, update platform/monitoring/values-minikube.yaml as well.
 git diff --check
-git diff -- gitops/apps/monitoring.yaml
+git diff -- gitops/apps/monitoring.yaml platform/monitoring/values-minikube.yaml
+git add gitops/apps/monitoring.yaml platform/monitoring/values-minikube.yaml
+git commit -m "chore(platform): upgrade monitoring chart"
+git push -u origin platform/monitoring-upgrade
 ```
 
-Pred zmenou si prečítaj release notes nového chartu. Ak vyžaduje CRD/migráciu, rieš ju podľa dokumentácie – nepreskakuj.
-
-### 2. PR → merge → kontrola
+Open PR → review Diff → merge → let Argo CD sync. A platform-only PR may not trigger the app CI workflow; perform the checks below manually. Check:
 
 ```bash
-git add gitops/apps/monitoring.yaml
-git commit -m "chore(platform): update monitoring chart"
-git push -u origin platform/monitoring-update
+kubectl --context aspecta -n argocd get application aspecta-monitoring
+kubectl --context aspecta -n monitoring get pods,pvc
 ```
 
-Na GitHube vytvor PR a merge. Potom:
+Expected: `Synced / Healthy`, Pods Ready, PVCs still Bound. **Do not use `helm upgrade` for this Argo CD-owned add-on.**
+
+## Example D2: upgrade Traefik (direct Helm)
+
+Branch `platform/traefik-upgrade`; change `platform/traefik/CHART_VERSION` (and values if needed). **Also update `TRAEFIK_CHART_VERSION` in `scripts/aspecta-bootstrap.sh`**: first-time setup currently has a separate hardcoded pin. PR → merge. After reviewing the new version and CRDs:
 
 ```bash
-kubectl -n argocd get application aspecta-monitoring
-kubectl -n monitoring get pods
-```
-
-**Očakávam:** monitoring je `Synced / Healthy`, pody bežia. **Žiadny nový app image tag.**
-
-## Príklad D2: update Traefik (samostatný Helm)
-
-Verzia chartu je v `platform/traefik/CHART_VERSION`; nastavenia v `platform/traefik/values-minikube.yaml`.
-
-1. Zisti aktuálny stav: `helm -n traefik history traefik` a `cat platform/traefik/CHART_VERSION`.
-2. Pozri release notes a kompatibilitu novej verzie (najmä CRD). Zmeň `CHART_VERSION` v samostatnej vetve → PR → merge.
-3. Po merge a `git pull` vykonaj **plánovanú Helm aktualizáciu**, iba ak Traefik nespravuje Argo CD:
-
-```bash
+git switch main && git pull --ff-only origin main
+helm history traefik -n traefik --kube-context aspecta
+helm repo add traefik https://traefik.github.io/charts --force-update
 helm repo update
-helm template traefik traefik/traefik --namespace traefik \
+helm template traefik traefik/traefik -n traefik --kube-context aspecta \
   --version "$(cat platform/traefik/CHART_VERSION)" \
-  -f platform/traefik/values-minikube.yaml > /tmp/traefik-rendered.yaml
-
-# Toto už reálne mení cluster – až po kontrole a schválení upgrade:
-helm upgrade traefik traefik/traefik -n traefik \
+  -f platform/traefik/values-minikube.yaml > /tmp/traefik.yaml
+# Planned maintenance only:
+helm upgrade traefik traefik/traefik -n traefik --kube-context aspecta \
   --version "$(cat platform/traefik/CHART_VERSION)" \
   -f platform/traefik/values-minikube.yaml --wait
-kubectl -n traefik get pods
-kubectl -n aspecta-app get ingress
+kubectl --context aspecta -n traefik get pods
 ```
 
-**Pozor:** pri upgrade chartov s CRD môže byť potrebný samostatný CRD krok; `helm upgrade` ich sám vždy neaktualizuje. Nepúšťaj ho bez kontroly release notes.
+**Version:** the Traefik chart changes, not backend/frontend/Aspecta chart versions. Test the app through the Ingress afterward.
 
-## Príklad D3: update Argo CD
+## Example D3: upgrade Argo CD (direct Helm)
 
-Samotný Argo CD má samostatný Helm release, pripnutý cez `platform/argocd/CHART_VERSION`. Postup: release notes → zmena pripnutej verzie vo vetve → PR → merge → schválený upgrade. Po merge:
+Branch `platform/argocd-upgrade`; edit `platform/argocd/CHART_VERSION`, PR and merge. In a maintenance window, after reviewing compatibility/CRDs:
 
 ```bash
-helm repo add argo https://argoproj.github.io/argo-helm
+git switch main && git pull --ff-only origin main
+helm history argocd -n argocd --kube-context aspecta
+helm repo add argo https://argoproj.github.io/argo-helm --force-update
 helm repo update
-helm template argocd argo/argo-cd -n argocd \
+helm template argocd argo/argo-cd -n argocd --kube-context aspecta \
   --version "$(cat platform/argocd/CHART_VERSION)" \
-  -f platform/argocd/values-minikube.yaml > /tmp/argocd-rendered.yaml
-
-# Reálny upgrade len po kontrole kompatibility, CRD a schválení:
-helm upgrade argocd argo/argo-cd -n argocd \
+  -f platform/argocd/values-minikube.yaml > /tmp/argocd.yaml
+# Planned maintenance only:
+helm upgrade argocd argo/argo-cd -n argocd --kube-context aspecta \
   --version "$(cat platform/argocd/CHART_VERSION)" \
   -f platform/argocd/values-minikube.yaml --wait
-kubectl -n argocd get pods,applications
+kubectl --context aspecta -n argocd get pods,applications
 ```
 
-Argo CD upgrade rob opatrne: ovplyvňuje celý GitOps proces. Ak release notes vyžadujú migráciu alebo CRD krok, najskôr vykonaj ten.
-
-## Kedy zvýšim verziu?
-
-- Mení sa `kube-prometheus-stack` → jeho **Helm chart targetRevision**.
-- Mení sa Traefik → `platform/traefik/CHART_VERSION`.
-- Mení sa Argo CD → `platform/argocd/CHART_VERSION`.
-- Backend/frontend SemVer pri týchto zmenách **nemením**.
-
-**Dôležité:** bežná GitHub Actions pipeline zameraná na `app/` a `helm/` nemusí pri zmene iba `gitops/` alebo `platform/` vôbec bežať. Pri platform upgrade sa preto nespoliehaj len na zelený PR – vykonaj uvedené kontroly osobitne.
-
-## Ak upgrade nefunguje
-
-- Pri Argo CD spravovanom addone sprav **revert cez PR** a over synchronizáciu.
-- Pri samostatnom Helm release najskôr pozri `helm history -n <namespace> <release>`; prípadný `helm rollback` musí byť schválený a potom zosúlaď aj uloženú verziu v Gite.
-- Pri nekompatibilných CRD alebo databázových zmenách nemusí stačiť jednoduchý rollback; riaď sa release notes.
+**If an upgrade fails:** Argo CD-owned add-on → revert via PR. Direct Helm release → inspect `helm history`; consider `helm rollback` after assessing compatibility, then align the Git version pin. Chart upgrades with CRD/data migrations may not be safely reversible.

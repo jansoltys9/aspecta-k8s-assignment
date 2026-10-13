@@ -1,43 +1,62 @@
-# Aspecta – quick start and staged demo
+# First-time setup (for reviewers)
 
-## Requirements
+Use **demo** for a quick, reproducible assessment. Use **full** only if you want to set up Argo CD, monitoring and the three-node environment from scratch.
 
-Docker Desktop (Linux containers), Git Bash or Bash, Minikube, kubectl, Helm and OpenSSL. An internet connection is needed to download Kubernetes components, public container images and Helm charts. The bootstrap checks Docker memory: **demo** needs at least ~4 GiB available to Docker (>=7 GiB recommended); **full** needs at least ~8 GiB. No specific `.wslconfig` is required for demo mode.
+### Before you start
 
-## Demo: one node
+Install Docker Desktop (Linux containers), Git, Git Bash, Minikube, kubectl, Helm and OpenSSL. You need internet access for the first setup. The demo checks available Docker memory and needs at least **4 GiB**; the full lab needs around **8 GiB or more**.
+
+```bash
+git clone https://github.com/jansoltys9/aspecta-k8s-assignment.git
+cd aspecta-k8s-assignment
+docker info
+```
+
+## Option 1 – Quick reviewer demo (one node)
+
+**Step 1: cluster, Calico and Traefik.** Nothing from the app is installed yet.
 
 ```bash
 bash scripts/aspecta-bootstrap.sh --mode demo --phase infra
-# Explain the node, CNI and Traefik. No application is running yet.
-bash scripts/aspecta-bootstrap.sh --mode demo --phase app
-# Installs Metrics Server and the app, creates a fresh local Secret.
 ```
 
-In a second terminal:
+**Step 2: install the application and Metrics Server.** The script creates a *local* demo Secret; no access to the author's credentials is needed.
+
+```bash
+bash scripts/aspecta-bootstrap.sh --mode demo --phase app
+kubectl --context aspecta-review -n aspecta-app get pods,deploy,hpa
+```
+
+**Step 3: open the application.** Keep this terminal running:
 
 ```bash
 kubectl --context aspecta-review -n traefik port-forward svc/traefik 18082:80
 ```
 
-Check `http://127.0.0.1:18082/` and `http://127.0.0.1:18082/api/hello` (HTTP 200 expected). Stop with `minikube stop -p aspecta-review`. This quick demo does **not** include Argo CD, Prometheus or multi-node failover.
+Open <http://127.0.0.1:18082/> and test <http://127.0.0.1:18082/api/hello>. Both should respond. Use `Ctrl+C` to stop the forward.
 
-## Full lab: three nodes
+**Stop without deleting anything:**
 
-Stop demo first if your laptop has limited RAM.
+```bash
+minikube stop -p aspecta-review
+```
+
+This quick demo does **not** include Argo CD, Prometheus or a highly available cluster. It is the easiest reviewer starting point.
+
+## Option 2 – Full GitOps lab (advanced, three nodes)
+
+This takes more time and is **not** a one-command fresh install. Stop the demo if your laptop has limited resources.
 
 ```bash
 bash scripts/aspecta-bootstrap.sh --mode full --phase infra
-# Explain 1 control plane + 2 workers, Calico, Traefik.
 bash scripts/aspecta-bootstrap.sh --mode full --phase gitops
-# One-time Argo CD setup guidance; then apply root Application.
 ```
 
-The GitOps phase deliberately does **not** auto-sync all applications: demonstrate Argo CD root/child Applications step by step. A new cluster must reseal its application Secret with its **own** Sealed Secrets controller key before deploying the protected backend. The ciphertext from the original lab is not portable.
+The second command gives *guided* Argo CD setup; it does not automatically install/sync every child Application. Before syncing the full app:
 
-## Other helpers
+1. Install/configure Argo CD and apply the management AppProject, then `gitops/bootstrap/aspecta-root.yaml` as guided by the bootstrap script.
+2. If using a fork, update `repoURL` **and AppProject source-repository permissions** to your own repository.
+3. Install/sync the Sealed Secrets controller and [seal a new Secret for your cluster](FULL-LAB-SECRETS.md). The author's encrypted Secret will **not** work in a new cluster.
+4. Sync the platform Applications, then the app. Check `kubectl -n argocd get applications` and `kubectl -n monitoring get pods,pvc`.
 
-- `bash scripts/aspecta-env.sh check|start|doctor|stop` – daily full-lab operations on an existing profile. Its `bootstrap` command is a **daily resume** operation, not first-time provisioning.
-- `bash scripts/aspecta-uis.sh start|open|status|stop` – UI port-forwards for the **full** lab. Use the manual Traefik port-forward above for demo.
-- Image builds, Trivy scanning and registry publishing are separate **CI/CD** steps. Neither bootstrap mode builds an image.
-
-No bootstrap command deletes a Minikube profile, Kubernetes Secret or PVC, and there is no single `all` command.
+For daily use of a full lab that is **already installed**, switch to [Daily use](OPERATIONS-LIFECYCLE.md). Do not rerun first-install phases every morning.
