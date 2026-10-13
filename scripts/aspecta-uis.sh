@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local UI access for the Aspecta Minikube lab (Windows Git Bash / Linux).
+# Local UI access for the Aspecta Minikube lab (Windows Git Bash / Linux / macOS).
 # Usage: bash scripts/aspecta-uis.sh start|status|open|stop|logs
 set -Eeuo pipefail
 
@@ -107,17 +107,38 @@ stop_all() {
   done
 }
 
+# Use the host's default browser. Headless systems can open the printed URLs
+# manually. Do not require Windows-specific executables on Linux or macOS.
+open_url() {
+  local url="$1"
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      command -v explorer.exe >/dev/null 2>&1 && explorer.exe "$url" ;;
+    Darwin*)
+      command -v open >/dev/null 2>&1 && open "$url" ;;
+    *)
+      # WSL or a headless Linux host may have xdg-open but no desktop session.
+      if command -v xdg-open >/dev/null 2>&1 && xdg-open "$url"; then return 0; fi
+      if command -v wslview >/dev/null 2>&1 && wslview "$url"; then return 0; fi
+      if command -v explorer.exe >/dev/null 2>&1 && explorer.exe "$url"; then return 0; fi
+      return 1 ;;
+  esac
+}
+
 open_all() {
-  local name url
-  if ! command -v explorer.exe >/dev/null 2>&1; then
-    echo 'Automatic browser opening is available on Windows; URLs:'
-    status_all
-    return 0
-  fi
+  local name url failures=0
   for name in "${names[@]}"; do
     url="$(url_for "$name")"
-    explorer.exe "$url" >/dev/null 2>&1 || true
+    if ! open_url "$url" >/dev/null 2>&1; then
+      printf '[WARN] Browser could not open %s: %s\n' "$name" "$url" >&2
+      failures=$((failures + 1))
+    fi
   done
+  if (( failures > 0 )); then
+    printf '[INFO] Open these URLs manually if your system has no browser.\n'
+    status_all
+  fi
+  return 0
 }
 
 case "${1:-}" in
@@ -126,5 +147,9 @@ case "${1:-}" in
   stop)   stop_all ;;
   open)   open_all ;;
   logs)   for name in "${names[@]}"; do printf '\n--- %s ---\n' "$name"; tail -n 8 "$STATE_DIR/$name.log" 2>/dev/null || true; done ;;
+  -h|--help|help)
+         printf '%s\n' 'Aspecta - local UI access (Windows Git Bash / Linux / macOS)' \
+           'Usage: bash scripts/aspecta-uis.sh start|status|open|stop|logs' \
+           'Browser opening uses explorer.exe, xdg-open or open when available.' ;;
   *)     echo 'Usage: bash scripts/aspecta-uis.sh start|status|open|stop|logs' >&2; exit 2 ;;
 esac

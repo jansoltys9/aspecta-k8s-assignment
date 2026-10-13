@@ -8,10 +8,14 @@ MODE=""
 PHASE=""
 K8S_VERSION="v1.35.1"
 TRAEFIK_CHART_VERSION="41.6.1"
+if [[ -r "$ROOT/platform/argocd/CHART_VERSION" ]]; then
+  ARGOCD_CHART_VERSION="$(tr -d '\r\n' < "$ROOT/platform/argocd/CHART_VERSION")"
+fi
+[[ -n "${ARGOCD_CHART_VERSION:-}" ]] || ARGOCD_CHART_VERSION="10.10.1"
 
 usage() {
   cat <<'HELP'
-Aspecta bootstrap (Windows Git Bash / Linux Bash)
+Aspecta bootstrap (Windows Git Bash / Linux / macOS)
 
   bash scripts/aspecta-bootstrap.sh --mode demo --phase infra
   bash scripts/aspecta-bootstrap.sh --mode demo --phase app
@@ -22,16 +26,18 @@ Aspecta bootstrap (Windows Git Bash / Linux Bash)
 Phases are intentional; there is NO 'all' command.
   demo/infra   One Minikube node + Calico + Traefik (no app yet)
   demo/app     Metrics Server + local demo Secret + Helm application
-  full/infra   Three Minikube nodes + Calico + Traefik (no add-ons/apps)
+  full/infra   Three nodes + Calico + CSI HostPath + Traefik (no app yet)
   full/gitops  Guide Argo CD + App-of-Apps bootstrap (no auto-sync)
 
-Other helpers (unchanged):
+Daily operations (for the EXISTING full lab):
   scripts/aspecta-env.sh     Daily check / restart / stop (full lab)
   scripts/aspecta-uis.sh     Local web UI port-forwards
+  scripts/aspecta-storage.sh Full-lab CSI addon status and explicit reconcile
 
 After setup, use: bash scripts/aspecta-env.sh check
-Note: aspecta-env.sh bootstrap resumes an EXISTING full lab; this
-      script performs INITIAL, staged environment provisioning.
+For a fully installed existing lab, run: bash scripts/aspecta-env.sh verify
+Note: this bootstrap is for FIRST-TIME installation, not daily power cycles.
+      The reviewer demo is standalone and does not require Argo CD.
 
 Container images are built, scanned and published by the CI workflow,
 not by this bootstrap. No command deletes profiles, PVCs or Secrets.
@@ -58,6 +64,33 @@ log() { printf '[INFO] %s\n' "$*"; }
 err() { printf '[ERROR] %s\n' "$*" >&2; }
 require() { for x in "$@"; do has "$x" || { err "Missing CLI: $x"; exit 1; }; done; }
 k() { kubectl --context "$PROFILE" "$@"; }
+
+# Only Windows Git Bash/MSYS needs protection against /readyz path conversion.
+# Use the ordinary kubectl command on Linux and macOS.
+kube_api_ready() {
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) MSYS_NO_PATHCONV=1 k --request-timeout=10s get --raw=/readyz ;;
+    *)                    k --request-timeout=10s get --raw=/readyz ;;
+  esac
+}
+
+wait_for_api() {
+  local deadline=$((SECONDS + 180)) next_notice=$((SECONDS + 20))
+  log "Waiting for Kubernetes API /readyz (context: $PROFILE, timeout: 180s)..."
+  until kube_api_ready >/dev/null 2>&1; do
+    if (( SECONDS >= deadline )); then
+      err "Kubernetes API did not become ready for context '$PROFILE'."
+      return 1
+    fi
+    if (( SECONDS >= next_notice )); then
+      log 'Kubernetes API is still starting; retrying...'
+      next_notice=$((SECONDS + 20))
+    fi
+    sleep 5
+  done
+  log 'Kubernetes API is ready.'
+}
+
 profile_exists() {
   minikube profile list --output=json 2>/dev/null \
     | grep -Eq '"Name"[[:space:]]*:[[:space:]]*"'"$PROFILE"'"'
@@ -76,7 +109,7 @@ assert_context() {
 
 infra() {
   require docker minikube kubectl helm
-  docker info >/dev/null 2>&1 || { err 'Start Docker Desktop first'; exit 1; }
+  docker info >/dev/null 2>&1 || { err 'Docker daemon unavailable. Start Docker Desktop or Docker Engine.'; exit 1; }
   [[ -f "$ROOT/platform/traefik/values-minikube.yaml" ]] || { err 'Traefik values not found'; exit 1; }
 
   local available memory cpus current_nodes
@@ -106,6 +139,7 @@ infra() {
   fi
   kubectl config use-context "$PROFILE" >/dev/null
   assert_context
+  wait_for_api
 
   if [[ "$MODE" == full ]]; then
     current_nodes="$(k get nodes --no-headers | wc -l | tr -d ' ')"
@@ -122,6 +156,19 @@ infra() {
   else
     k wait --for=condition=Ready node/aspecta-review --timeout=180s
     k label node aspecta-review workload-tier=apps aspecta.io/pool=workers --overwrite
+  fi
+
+  # CoreDNS and Calico must be ready before deploying ingress.
+  log 'Waiting for Kubernetes DNS and Calico networking'
+  k -n kube-system rollout status deployment/coredns --timeout=180s
+  k -n kube-system rollout status daemonset/calico-node --timeout=180s
+
+  # Full lab storage is an infrastructure prerequisite. Keep ONE active driver:
+  # csi-hostpath-driver; GitOps manages the aspecta-csi-wffc StorageClass.
+  # The demo profile is isolated and does not use monitoring CSI PVCs.
+  if [[ "$MODE" == full ]]; then
+    log 'Aligning CSI HostPath storage before GitOps or monitoring deployment'
+    bash "$ROOT/scripts/aspecta-storage.sh" reconcile --profile "$PROFILE" --context "$PROFILE"
   fi
 
   # Traefik is the only manually installed ingress prerequisite.
@@ -141,7 +188,8 @@ infra() {
 
 demo_app() {
   require docker kubectl helm openssl tr mktemp
-  docker info >/dev/null 2>&1 || { err 'Start Docker Desktop first'; exit 1; }
+  docker info >/dev/null 2>&1 || { err 'Docker daemon unavailable. Start Docker Desktop or Docker Engine.'; exit 1; }
+  wait_for_api
   k get node aspecta-review >/dev/null 2>&1 || {
     err 'Demo profile missing. Run --mode demo --phase infra first.'; exit 1;
   }
@@ -177,6 +225,9 @@ demo_app() {
     --set observability.enabled=false \
     --set backend.auth.existingSecretName=aspecta-backend-auth-review \
     --wait --timeout 5m
+  log 'Checking backend and frontend rollout readiness'
+  k -n aspecta-app rollout status deployment/aspecta-backend --timeout=180s
+  k -n aspecta-app rollout status deployment/aspecta-frontend --timeout=180s
   k -n aspecta-app get deploy,pods,hpa -o wide
   log 'UI: kubectl --context aspecta-review -n traefik port-forward svc/traefik 18082:80'
   log 'Then open http://127.0.0.1:18082/ and /api/hello'
@@ -184,24 +235,29 @@ demo_app() {
 
 full_gitops() {
   require kubectl helm
+  wait_for_api
   k get nodes >/dev/null 2>&1 || { err 'Start the full infrastructure first.'; exit 1; }
+  # Fail before GitOps if the CSI infrastructure addon has not been enabled.
+  bash "$ROOT/scripts/aspecta-storage.sh" status --profile "$PROFILE" --context "$PROFILE"
   log 'The full lab uses Argo CD to deploy the application and add-ons.'
   if ! k -n argocd get deployment argocd-server >/dev/null 2>&1; then
     echo 'Argo CD is not installed. Install it once from a pinned Helm chart:'
     echo '  helm repo add argo https://argoproj.github.io/argo-helm'
-    echo '  helm list -n argocd  # Check the chart version on an existing reference cluster.'
+    echo '  # Chart version is pinned in platform/argocd/CHART_VERSION.'
     echo '  helm upgrade --install argocd argo/argo-cd --kube-context aspecta -n argocd --create-namespace \'
-    echo '    -f platform/argocd/values-minikube.yaml --version <PINNED_CHART_VERSION>'
+    echo "    -f platform/argocd/values-minikube.yaml --version $ARGOCD_CHART_VERSION"
     echo 'Then rerun this phase. Argo CD itself needs an initial installation.'
     return 1
   fi
   log 'Argo CD is present; no sync was triggered.'
   k -n argocd get applications || true
   echo 'GitOps demo sequence (run each step manually):'
-  echo '  1. kubectl --context aspecta apply -f gitops/bootstrap/aspecta-root.yaml'
-  echo '  2. In Argo CD: Sync aspecta-root; review add-ons and storage.'
-  echo '  3. On NEW clusters: reseal the application Secret with the new controller key.'
-  echo '  4. In Argo CD: Sync aspecta only after its prerequisites are healthy.'
+  echo '  1. kubectl --context aspecta apply -f gitops/apps/project-aspecta-management.yaml'
+  echo '  2. kubectl --context aspecta apply -f gitops/bootstrap/aspecta-root.yaml'
+  echo '  3. In Argo CD: Sync aspecta-root, then verify platform add-ons and storage.'
+  echo '  4. On a NEW cluster, create your own SealedSecret (docs/FULL-LAB-SECRETS.md).'
+  echo '  5. Verify the Secret is present before syncing the application.'
+  echo '  6. In Argo CD: Sync aspecta; wait for both Deployments to be Ready.'
   echo 'No app/add-on was automatically installed or synchronized by this command.'
 }
 
