@@ -68,6 +68,7 @@ const server = http.createServer((req, res) => {
 
     return res.end(JSON.stringify({
       message: MESSAGE,
+      service: "aspecta-backend",
       environment: ENVIRONMENT,
       hostname: os.hostname(),
       timestamp: new Date().toISOString()
