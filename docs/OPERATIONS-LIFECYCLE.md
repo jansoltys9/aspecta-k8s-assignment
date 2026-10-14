@@ -14,7 +14,7 @@ bash scripts/aspecta-env.sh uis start
 bash scripts/aspecta-env.sh uis open
 ```
 
-`start` only resumes an **existing** cluster; `verify` checks Kubernetes, CSI storage, Argo CD, workloads and monitoring. It does not force an Argo CD sync.
+`start` resumes an **existing** cluster, safely aligns the CSI addon (after checking PVC ownership), and checks readiness. `verify` is read-only. Neither command forces an Argo CD sync.
 
 | UI | Local address |
 |---|---|
@@ -56,4 +56,4 @@ kubectl --context aspecta get pods -A
 kubectl --context aspecta -n monitoring get pvc
 ```
 
-For a planned, one-time storage alignment, first read the storage checks and use `bash scripts/aspecta-env.sh storage status`; only use `storage reconcile` deliberately. Do not delete PVCs to make monitoring start.
+`start` automatically runs the safe storage reconcile. If storage still fails, check `bash scripts/aspecta-env.sh storage status --strict` and investigate; do not delete PVCs.

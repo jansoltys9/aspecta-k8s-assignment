@@ -13,8 +13,8 @@ UI_HELPER="$SCRIPT_DIR/aspecta-uis.sh"
 STORAGE_HELPER="$SCRIPT_DIR/aspecta-storage.sh"
 NODE_BOOTSTRAP="$REPO_ROOT/platform/bootstrap/label-workers.sh"
 OPS_DIR="${ASPECTA_OPS_DIR:-$HOME/.aspecta-ops}"
-ROLLOUT_TIMEOUT="${ASPECTA_ROLLOUT_TIMEOUT:-180}"
-ARGO_TIMEOUT="${ASPECTA_ARGO_TIMEOUT:-120}"
+ROLLOUT_TIMEOUT="${ASPECTA_ROLLOUT_TIMEOUT:-240}"
+ARGO_TIMEOUT="${ASPECTA_ARGO_TIMEOUT:-180}"
 # Fail early for invalid operator-provided timeout overrides.
 for timeout in "$ROLLOUT_TIMEOUT" "$ARGO_TIMEOUT"; do
   [[ "$timeout" =~ ^[1-9][0-9]*$ ]] || {
@@ -49,8 +49,8 @@ usage() {
 Aspecta - local Kubernetes platform (Windows Git Bash / Linux / macOS)
 
   bash scripts/aspecta-env.sh check       Read-only health, statistics and next steps
-  bash scripts/aspecta-env.sh start       Start EXISTING 3-node cluster and verify platform readiness
-  bash scripts/aspecta-env.sh verify      Wait for ordered readiness gates; do not restart Minikube
+  bash scripts/aspecta-env.sh start       Start EXISTING 3-node cluster, align CSI storage and verify
+  bash scripts/aspecta-env.sh verify      Read-only readiness checks; do not change addons
   bash scripts/aspecta-env.sh bootstrap   Start, restore worker labels, verify and report GitOps
   bash scripts/aspecta-env.sh storage status    Check CSI addon and storage ownership
   bash scripts/aspecta-env.sh storage reconcile Align CSI addon during maintenance
@@ -59,9 +59,9 @@ Aspecta - local Kubernetes platform (Windows Git Bash / Linux / macOS)
   bash scripts/aspecta-env.sh uis start   Delegate to aspecta-uis.sh start|open|status|stop|logs
   bash scripts/aspecta-env.sh stop        Snapshot state, stop UI forwards and Minikube (no delete)
 
-Startup gates check readiness in dependency order. Kubernetes still restarts existing
-Pods in parallel after a Minikube power cycle. No app YAML is applied or pruned.
-HPAs, Argo CD self-healing and PVCs remain untouched.
+Startup gates check readiness in dependency order. On start, storage reconcile
+aligns Minikube CSI addon state after checking PVC ownership. Verify is read-only.
+No app YAML is applied or pruned; HPAs, Argo CD sync and PVCs remain untouched.
 USAGE
 }
 
@@ -421,6 +421,11 @@ start_cluster() {
   wait_for_api
   kw wait --for=condition=Ready "node/$PROFILE" "node/${PROFILE}-m02" "node/${PROFILE}-m03" --timeout="${ROLLOUT_TIMEOUT}s"
   restore_worker_labels
+  # Minikube may report CSI as disabled after restoring its existing Pods.
+  # Align the addon before Stage 2's strict, read-only storage check.
+  # The helper first checks PVC ownership and never deletes PVCs or PVs.
+  section 'Storage | Align CSI addon after Minikube start'
+  bash "$STORAGE_HELPER" reconcile --profile "$PROFILE" --context "$CONTEXT"
   verify_platform
   snapshot_pods
   ok 'Three nodes and all installed platform components are ready.'

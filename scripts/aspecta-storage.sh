@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Full-lab storage owner: Minikube CSI HostPath addon + GitOps StorageClass.
 # This helper never deletes PVs, PVCs, or CSI volumes.
-# Run "reconcile" intentionally during first installation or maintenance only.
+# The existing-lab start helper also runs reconcile after its PVC safety checks.
 set -Eeuo pipefail
 
 ACTION="${1:-status}"
@@ -24,8 +24,8 @@ Aspecta full-lab storage (Windows Git Bash / Linux / macOS)
 
   status     Read-only: addon states, CSI readiness, StorageClass and PVCs.
   --strict   Also require the GitOps StorageClass to be the sole default.
-  reconcile  Explicit maintenance: enable CSI addon, disable old Minikube
-             storage addons, and demote legacy default StorageClasses.
+  reconcile  Idempotent addon alignment (also called by aspecta-env.sh start):
+             enable CSI, disable old addons, demote legacy default classes.
 
 This operates on the FULL three-node lab. The single-node reviewer demo
 is a separate profile and does not require CSI HostPath monitoring PVCs.
