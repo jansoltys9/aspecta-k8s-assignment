@@ -70,6 +70,7 @@ const server = http.createServer((req, res) => {
       message: MESSAGE,
       service: "aspecta-backend",
       environment: ENVIRONMENT,
+      demoRelease: "2026-10-18-R2",
       hostname: os.hostname(),
       timestamp: new Date().toISOString()
     }));
